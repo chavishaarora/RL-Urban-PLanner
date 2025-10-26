@@ -2,7 +2,7 @@
 
 A Python-based reinforcement learning system for optimizing urban park design. This project uses Q-Learning to intelligently place park elements (benches, trees, fountains, lamps, etc.) to maximize comfort, utility, and aesthetic metrics.
 
-## 🌟 Features
+##Features
 
 - **Reinforcement Learning**: Q-Learning algorithm with experience replay
 - **3D Visualization**: Real-time park rendering using Pygame and OpenGL
@@ -11,7 +11,7 @@ A Python-based reinforcement learning system for optimizing urban park design. T
 - **Agent Simulation**: Simulated pedestrians to evaluate park usability
 - **Modular Architecture**: Clean separation of concerns with organized module structure
 
-## 📁 Project Structure
+##Project Structure
 
 ```
 urban-park-rl/
@@ -92,7 +92,7 @@ urban-park-rl/
 └── LICENSE                   # License file
 ```
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 - Python 3.8 or higher
@@ -144,7 +144,7 @@ python experiments/baseline_random.py
 python src/main.py --mode interactive
 ```
 
-## 🧠 Algorithm Details
+##Algorithm Details
 
 The system uses Q-Learning with the following specifications:
 
@@ -163,7 +163,7 @@ The system uses Q-Learning with the following specifications:
 4. **Distribution**: Uniformity of element placement
 5. **Total Score**: Weighted combination of all metrics
 
-## 🤝 Contributing
+##Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -173,11 +173,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 📝 License
+##License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+##Acknowledgments
 
 - Inspired by urban planning optimization research
 - Built with Python scientific computing stack

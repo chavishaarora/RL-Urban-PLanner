@@ -117,7 +117,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 🎮 Usage
+##Usage
 
 ### Quick Start
 
@@ -155,7 +155,7 @@ The system uses Q-Learning with the following specifications:
 - **Discount Factor**: 0.95 (configurable)
 - **Epsilon**: 0.3 with decay (configurable)
 
-## 📊 Metrics
+##Metrics
 
 1. **Comfort Score**: Evaluates placement of benches near shade and amenities
 2. **Utilization**: Percentage of effectively used space

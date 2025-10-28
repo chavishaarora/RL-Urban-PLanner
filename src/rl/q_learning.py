@@ -9,11 +9,18 @@ from typing import Tuple, Optional, List, Dict
 from collections import deque
 import random
 
-from ..environment.park import Park, ElementType
-from ..config import rl_config, metrics_config, park_config
-from .replay_buffer import ReplayBuffer
-from .state import StateEncoder
-from .actions import ActionSpace
+try:
+    from environment.park import Park, ElementType
+    from config import rl_config, metrics_config, park_config
+    from rl.replay_buffer import ReplayBuffer
+    from rl.state import StateEncoder
+    from rl.actions import ActionSpace
+except ImportError:
+    from ..environment.park import Park, ElementType
+    from ..config import rl_config, metrics_config, park_config
+    from .replay_buffer import ReplayBuffer
+    from .state import StateEncoder
+    from .actions import ActionSpace
 
 class QLearningAgent:
     """Q-Learning agent for park design optimization"""
@@ -194,10 +201,16 @@ class ParkDesignTrainer:
         self.current_step = 0
         
         # Import metrics calculators
-        from ..metrics.comfort import ComfortCalculator
-        from ..metrics.coverage import CoverageCalculator
-        from ..metrics.utilization import UtilizationCalculator
-        from ..metrics.distribution import DistributionCalculator
+        try:
+            from metrics.comfort import ComfortCalculator
+            from metrics.coverage import CoverageCalculator
+            from metrics.utilization import UtilizationCalculator
+            from metrics.distribution import DistributionCalculator
+        except ImportError:
+            from ..metrics.comfort import ComfortCalculator
+            from ..metrics.coverage import CoverageCalculator
+            from ..metrics.utilization import UtilizationCalculator
+            from ..metrics.distribution import DistributionCalculator
         
         self.comfort_calc = ComfortCalculator(park)
         self.coverage_calc = CoverageCalculator(park)
@@ -267,6 +280,7 @@ class ParkDesignTrainer:
             next_state_hash = self.agent.state_encoder.encode_state(self.park)
             
             # Check if episode is done
+            max_elements = self.park.grid_size * self.park.grid_size
             done = (step == max_steps - 1) or (len(self.park.elements) >= max_elements)
             
             # Store experience

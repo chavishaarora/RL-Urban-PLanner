@@ -1,6 +1,6 @@
 """
-Professional 3D Urban Park RL Application
-Qt-based UI with embedded OpenGL rendering - FIXED VERSION
+Professional 3D Urban Park RL Application with Dynamic Grid Sizing
+Qt-based UI with embedded OpenGL rendering - ENHANCED VERSION
 """
 
 import sys
@@ -29,7 +29,7 @@ from utils.data_manager import DataManager
 
 # Import components
 sys.path.insert(0, os.path.dirname(__file__))
-from visualization.renderer3d import Renderer3DQt  # We'll create this
+from visualization.renderer3d import Renderer3DQt
 from visualization.ui_qt import ProfessionalQtUI
 
 
@@ -102,7 +102,7 @@ class UrbanParkRL3D:
     def __init__(self):
         print("Initializing Urban Park RL 3D...")
         
-        # Initialize park
+        # Initialize park with default size
         self.park = Park(size=30.0, grid_size=3)
         self.agent_manager = AgentManager(self.park, num_agents=10)
         
@@ -147,7 +147,7 @@ class UrbanParkRL3D:
     
     def change_grid_size(self, new_grid_size: int):
         """
-        Change the grid size of the park
+        Change the grid size of the park - MORE cells in SAME space
         
         Args:
             new_grid_size: New grid dimensions (e.g., 3, 5, 7, 10)
@@ -157,14 +157,15 @@ class UrbanParkRL3D:
         # Store current agent count
         current_agent_count = len(self.agent_manager.agents)
         
-        # Calculate new park size based on cell size
-        # Keep cell size constant, scale park size
-        cell_size = self.park.cell_size
-        new_park_size = new_grid_size * cell_size
+        # FIXED: Keep park size constant, change cell size
+        # The park physical size stays the same (e.g., 30×30 meters)
+        # Only the grid resolution changes
+        park_size = self.park.size  # Keep this constant (e.g., 30.0)
+        new_cell_size = park_size / new_grid_size
         
-        print(f"  - New park size: {new_park_size}×{new_park_size}")
-        print(f"  - Cell size: {cell_size}×{cell_size}")
-        print(f"  - Total cells: {new_grid_size * new_grid_size}")
+        print(f"  - Park size: {park_size}×{park_size} (UNCHANGED)")
+        print(f"  - Cell size: {self.park.cell_size}×{self.park.cell_size} → {new_cell_size}×{new_cell_size}")
+        print(f"  - Total cells: {self.park.grid_size * self.park.grid_size} → {new_grid_size * new_grid_size}")
         
         # Clear current park
         self.park.clear()
@@ -172,29 +173,33 @@ class UrbanParkRL3D:
         
         # Update park dimensions
         self.park.grid_size = new_grid_size
-        self.park.size = new_park_size
+        # Park size stays the same!
+        # self.park.size = park_size  # Already set, no change needed
+        self.park.cell_size = new_cell_size  # Update cell size
+        self.park.grid_occupancy = [[False for _ in range(new_grid_size)] 
+                                    for _ in range(new_grid_size)]
         
         # Reinitialize RL components with new grid size
         print("  - Reinitializing RL components...")
         
         # Update state encoder
-        self.q_agent.state_encoder = StateEncoder(grid_size=new_grid_size)
+        self.rl_agent.state_encoder = StateEncoder(grid_size=new_grid_size)
         
         # Update action space
-        self.q_agent.action_space = ActionSpace(grid_size=new_grid_size)
+        self.rl_agent.action_space = ActionSpace(grid_size=new_grid_size)
         
         # Update action space size
-        old_action_size = self.q_agent.action_size
-        self.q_agent.action_size = self.q_agent.action_space.action_space_size
+        old_action_size = self.rl_agent.action_size
+        self.rl_agent.action_size = self.rl_agent.action_space.action_space_size
         
-        print(f"  - Action space: {old_action_size} → {self.q_agent.action_size} actions")
+        print(f"  - Action space: {old_action_size} → {self.rl_agent.action_size} actions")
         
         # Clear Q-table since action space changed
-        if old_action_size != self.q_agent.action_size:
+        if old_action_size != self.rl_agent.action_size:
             print(f"  - Clearing Q-table (action space changed)")
-            self.q_agent.q_table = {}
-            self.q_agent.best_reward = float('-inf')
-            self.q_agent.best_design = None
+            self.rl_agent.q_table = {}
+            self.rl_agent.best_reward = float('-inf')
+            self.rl_agent.best_design = None
         
         # Respawn agents
         print(f"  - Respawning {current_agent_count} agents...")
@@ -203,9 +208,10 @@ class UrbanParkRL3D:
         
         print(f"✓ Grid size changed successfully!")
         print(f"  Grid: {new_grid_size}×{new_grid_size}")
+        print(f"  Park size: {park_size}×{park_size} meters (SAME)")
+        print(f"  Cell size: {new_cell_size:.2f}×{new_cell_size:.2f} meters (SMALLER)")
         print(f"  Cells: {new_grid_size * new_grid_size}")
         print(f"  Agents: {len(self.agent_manager.agents)}")
-        print()
     
     def update(self, delta_time: float):
         """Update simulation"""
@@ -267,7 +273,7 @@ class UrbanParkRL3D:
         element_types = [ElementType.BENCH, ElementType.TREE, 
                         ElementType.FOUNTAIN, ElementType.STREET_LAMP]
         
-        num_elements = random.randint(3, 9)
+        num_elements = random.randint(3, min(9, self.park.grid_size * self.park.grid_size))
         available = self.park.get_available_cells()
         
         for _ in range(num_elements):
@@ -332,7 +338,7 @@ class MainWindow(QWidget):
     
     def _create_left_panel(self):
         """Create left control panel"""
-        from visualization.ui_qt import StyledGroupBox, ModernButton, QSlider, QLabel, QFrame
+        from visualization.ui_qt import StyledGroupBox, ModernButton, QSlider, QLabel, QFrame, QComboBox
         from PyQt5.QtCore import Qt
         from PyQt5.QtWidgets import QVBoxLayout
         
@@ -360,6 +366,49 @@ class MainWindow(QWidget):
         line.setStyleSheet("background-color: #506680;")
         layout.addWidget(line)
         
+        # Grid Size Control
+        grid_size_label = QLabel("Grid Size")
+        grid_size_label.setStyleSheet("color: #96C8FF; font-size: 14px; font-weight: bold;")
+        layout.addWidget(grid_size_label)
+        
+        self.grid_size_combo = QComboBox()
+        self.grid_size_combo.addItems(["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"])
+        self.grid_size_combo.setCurrentIndex(0)  # Default to 3x3
+        self.grid_size_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2C3E50;
+                color: #ECF0F1;
+                border: 2px solid #34495E;
+                border-radius: 5px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QComboBox:hover {
+                border-color: #5DADE2;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #34495E;
+                color: #ECF0F1;
+                selection-background-color: #5DADE2;
+            }
+        """)
+        self.grid_size_combo.currentIndexChanged.connect(self._on_grid_size_changed)
+        layout.addWidget(self.grid_size_combo)
+        
+        self.grid_size_info = QLabel(f"Current: 3×3 (9 cells)")
+        self.grid_size_info.setStyleSheet("color: #A0A5B4; font-size: 12px;")
+        layout.addWidget(self.grid_size_info)
+        
+        # Separator
+        layout.addSpacing(10)
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.HLine)
+        line2.setStyleSheet("background-color: #506680;")
+        layout.addWidget(line2)
+        
         # Agent slider
         agent_label = QLabel("Agent Count")
         agent_label.setStyleSheet("color: #96C896; font-size: 14px; font-weight: bold;")
@@ -378,10 +427,10 @@ class MainWindow(QWidget):
         
         # Stats
         layout.addSpacing(10)
-        line2 = QFrame()
-        line2.setFrameShape(QFrame.HLine)
-        line2.setStyleSheet("background-color: #506680;")
-        layout.addWidget(line2)
+        line3 = QFrame()
+        line3.setFrameShape(QFrame.HLine)
+        line3.setStyleSheet("background-color: #506680;")
+        layout.addWidget(line3)
         
         stats_label = QLabel("Park Statistics")
         stats_label.setStyleSheet("color: #FFC864; font-size: 14px; font-weight: bold;")
@@ -496,6 +545,31 @@ class MainWindow(QWidget):
         
         widget.setLayout(main_layout)
         return widget
+    
+    def _on_grid_size_changed(self, index):
+        """Handle grid size change"""
+        # Map index to grid size
+        grid_sizes = [3, 5, 7, 10]
+        new_grid_size = grid_sizes[index]
+        
+        # Grid size names
+        size_names = ["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"]
+        
+        # Calculate total cells
+        total_cells = new_grid_size * new_grid_size
+        
+        # Update info label
+        self.grid_size_info.setText(f"Current: {size_names[index]} ({total_cells} cells)")
+        
+        print(f"\n{'='*50}")
+        print(f"Changing grid size to {new_grid_size}×{new_grid_size}")
+        print(f"{'='*50}")
+        
+        # Apply the change to the park
+        self.app.change_grid_size(new_grid_size)
+        
+        # Update UI
+        self._update_ui()
     
     def _on_agent_slider_changed(self, value):
         """Handle agent slider change"""

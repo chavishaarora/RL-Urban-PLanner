@@ -18,6 +18,8 @@ from config import ElementType
 from environment.park import Park
 from agents.pedestrian import AgentManager
 from rl.q_learning import QLearningAgent, ParkDesignTrainer
+from rl.state import StateEncoder
+from rl.actions import ActionSpace
 from metrics.comfort import ComfortCalculator
 from metrics.coverage import CoverageCalculator
 from metrics.utilization import UtilizationCalculator
@@ -124,7 +126,86 @@ class UrbanParkRL3D:
         self.training_episodes_remaining = 0
         self._total_training_episodes = 0
         
+        # Remove any pathways or grass patches that might exist
+        self.remove_disabled_elements()
+        
         print("Initialization complete!")
+    
+    def remove_disabled_elements(self):
+        """Remove pathways and grass patches from current park"""
+        disabled_types = [ElementType.PATHWAY, ElementType.GRASS_PATCH]
+        
+        original_count = len(self.park.elements)
+        self.park.elements = [
+            elem for elem in self.park.elements 
+            if elem.element_type not in disabled_types
+        ]
+        removed_count = original_count - len(self.park.elements)
+        
+        if removed_count > 0:
+            print(f"Removed {removed_count} disabled elements (pathways/grass patches)")
+    
+    def change_grid_size(self, new_grid_size: int):
+        """
+        Change the grid size of the park
+        
+        Args:
+            new_grid_size: New grid dimensions (e.g., 3, 5, 7, 10)
+        """
+        print(f"\nChanging grid size from {self.park.grid_size}×{self.park.grid_size} to {new_grid_size}×{new_grid_size}")
+        
+        # Store current agent count
+        current_agent_count = len(self.agent_manager.agents)
+        
+        # Calculate new park size based on cell size
+        # Keep cell size constant, scale park size
+        cell_size = self.park.cell_size
+        new_park_size = new_grid_size * cell_size
+        
+        print(f"  - New park size: {new_park_size}×{new_park_size}")
+        print(f"  - Cell size: {cell_size}×{cell_size}")
+        print(f"  - Total cells: {new_grid_size * new_grid_size}")
+        
+        # Clear current park
+        self.park.clear()
+        self.agent_manager.clear_all_agents()
+        
+        # Update park dimensions
+        self.park.grid_size = new_grid_size
+        self.park.size = new_park_size
+        
+        # Reinitialize RL components with new grid size
+        print("  - Reinitializing RL components...")
+        
+        # Update state encoder
+        self.q_agent.state_encoder = StateEncoder(grid_size=new_grid_size)
+        
+        # Update action space
+        self.q_agent.action_space = ActionSpace(grid_size=new_grid_size)
+        
+        # Update action space size
+        old_action_size = self.q_agent.action_size
+        self.q_agent.action_size = self.q_agent.action_space.action_space_size
+        
+        print(f"  - Action space: {old_action_size} → {self.q_agent.action_size} actions")
+        
+        # Clear Q-table since action space changed
+        if old_action_size != self.q_agent.action_size:
+            print(f"  - Clearing Q-table (action space changed)")
+            self.q_agent.q_table = {}
+            self.q_agent.best_reward = float('-inf')
+            self.q_agent.best_design = None
+        
+        # Respawn agents
+        print(f"  - Respawning {current_agent_count} agents...")
+        for _ in range(current_agent_count):
+            self.agent_manager.spawn_agent()
+        
+        print(f"✓ Grid size changed successfully!")
+        print(f"  Grid: {new_grid_size}×{new_grid_size}")
+        print(f"  Cells: {new_grid_size * new_grid_size}")
+        print(f"  Agents: {len(self.agent_manager.agents)}")
+        print()
     
     def update(self, delta_time: float):
         """Update simulation"""
@@ -178,12 +259,13 @@ class UrbanParkRL3D:
             print("No best design available")
     
     def generate_random_design(self):
-        """Generate random design"""
+        """Generate random design (excluding pathways and grass patches)"""
         import random
         self.park.clear()
         
-        element_types = [ElementType.BENCH, ElementType.TREE, ElementType.FOUNTAIN,
-                        ElementType.STREET_LAMP, ElementType.GRASS_PATCH, ElementType.PATHWAY]
+        # UPDATED: Removed GRASS_PATCH and PATHWAY - only use core elements
+        element_types = [ElementType.BENCH, ElementType.TREE, 
+                        ElementType.FOUNTAIN, ElementType.STREET_LAMP]
         
         num_elements = random.randint(3, 9)
         available = self.park.get_available_cells()
@@ -195,7 +277,7 @@ class UrbanParkRL3D:
             available.remove((x, y))
             self.park.add_element(random.choice(element_types), x, y)
         
-        print(f"Random design generated: {num_elements} elements")
+        print(f"Random design generated: {num_elements} elements (no pathways/grass)")
 
 
 class MainWindow(QWidget):

@@ -183,8 +183,20 @@ class ParkLamp:
         # Inverse square law
         return self.brightness * (1 - (distance / self.coverage_radius) ** 2)
 
+# ============================================================================
+# DEPRECATED CLASSES - These elements have been removed from the application
+# ============================================================================
+# The following classes are kept for backwards compatibility but are no longer
+# used in the main application. GRASS_PATCH and PATHWAY elements have been
+# removed from the design system.
+# ============================================================================
+
 class GrassPatch:
-    """Detailed grass patch implementation"""
+    """Detailed grass patch implementation
+    
+    DEPRECATED: This element type has been removed from the application.
+    This class is kept for backwards compatibility only.
+    """
     
     def __init__(self, grass_type: str = "bermuda"):
         self.grass_type = grass_type
@@ -232,7 +244,11 @@ class GrassPatch:
         self.density = self.health
 
 class PathwaySection:
-    """Detailed pathway implementation"""
+    """Detailed pathway implementation
+    
+    DEPRECATED: This element type has been removed from the application.
+    This class is kept for backwards compatibility only.
+    """
     
     def __init__(self, material: MaterialType = MaterialType.CONCRETE, width: float = 2.0):
         self.material = material

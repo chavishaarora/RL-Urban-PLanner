@@ -27,15 +27,13 @@ class StateEncoder:
     def __init__(self, grid_size: int = 3):
         self.grid_size = grid_size
         
-        # Element type to index mapping
+        # UPDATED: Element type to index mapping (removed GRASS_PATCH and PATHWAY)
         self.element_to_idx = {
             ElementType.EMPTY: 0,
             ElementType.BENCH: 1,
             ElementType.TREE: 2,
             ElementType.FOUNTAIN: 3,
-            ElementType.STREET_LAMP: 4,
-            ElementType.GRASS_PATCH: 5,
-            ElementType.PATHWAY: 6
+            ElementType.STREET_LAMP: 4
         }
     
     def encode_state(self, park: Park) -> str:

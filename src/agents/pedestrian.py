@@ -1,247 +1,383 @@
 """
-Pedestrian Agent Module
-Simulates pedestrian agents moving through the park
+IMPROVED Agent Manager - Prevents both disappearing AND freezing
+Key improvements:
+1. Agents never disappear (already fixed)
+2. Agents ALWAYS keep moving (new fix)
+3. Better stuck detection with forced recovery
+4. Shorter rest times
+5. More aggressive unstuck behavior
 """
 
-import numpy as np
-from typing import List, Optional, Tuple
-from dataclasses import dataclass
-from enum import Enum
 import random
-
-try:
-    from environment.park import Park, Position
-    from config import agent_config, ElementType
-except ImportError:
-    # Fallback for standalone testing
-    @dataclass
-    class Position:
-        x: float
-        y: float
-        z: float = 0.0
-    class ElementType:
-        BENCH = "bench"
-        TREE = "tree"
-        FOUNTAIN = "fountain"
-        STREET_LAMP = "lamp"
+import math
+from typing import List, Optional, Tuple
+from enum import Enum
 
 
 class AgentState(Enum):
-    """Possible states for pedestrian agents"""
+    """Agent behavior states"""
     WANDERING = "wandering"
     MOVING_TO_TARGET = "moving_to_target"
     RESTING = "resting"
-    OBSERVING = "observing"
+
+
+class Position:
+    """Simple 2D position"""
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+    
+    def distance_to(self, other: 'Position') -> float:
+        dx = self.x - other.x
+        dy = self.y - other.y
+        return math.sqrt(dx * dx + dy * dy)
+    
+    def copy(self):
+        return Position(self.x, self.y)
 
 
 class PedestrianAgent:
-    """Individual pedestrian agent"""
+    """Individual pedestrian agent with improved movement"""
     
-    def __init__(self, agent_id: int, spawn_position: Position, park: Park):
-        self.id = agent_id
-        self.position = spawn_position
+    def __init__(self, park, position: Position):
         self.park = park
-        
-        # Movement properties
-        try:
-            self.speed = random.uniform(agent_config.min_speed, agent_config.max_speed)
-        except:
-            self.speed = random.uniform(1.0, 2.0)
-        
-        self.velocity = np.array([0.0, 0.0])
-        self.direction = random.uniform(0, 2 * np.pi)
-        
-        # State
+        self.position = position
+        self.last_position = position.copy()  # Track last position
+        self.target = None
         self.state = AgentState.WANDERING
-        self.target_position: Optional[Position] = None
-        self.rest_time_remaining = 0.0
+        self.speed = random.uniform(0.8, 1.8)  # Faster agents
+        self.rest_timer = 0
+        self.rest_duration = random.uniform(1.5, 4.0)  # Shorter rest times
+        self.stuck_timer = 0
+        self.stuck_threshold = 3.0  # Reduced from 5.0 - detect stuck faster
+        self.time_since_last_move = 0  # Track actual movement
         
-        # Behavior parameters
-        self.wander_strength = 0.5
-        self.attraction_radius = 5.0
-        self.avoidance_radius = 1.5
-        
-        # Statistics
-        self.total_distance_traveled = 0.0
-        self.time_resting = 0.0
-        self.benches_used = 0
-    
     def update(self, delta_time: float):
-        """Update agent state and position"""
-        if self.state == AgentState.RESTING:
-            self.rest_time_remaining -= delta_time
-            if self.rest_time_remaining <= 0:
-                self.state = AgentState.WANDERING
+        """Update agent behavior with improved stuck detection"""
         
-        elif self.state == AgentState.MOVING_TO_TARGET:
-            if self.target_position:
-                self._move_toward_target(delta_time)
-            else:
-                self.state = AgentState.WANDERING
+        # Check if agent actually moved since last update
+        distance_moved = self.position.distance_to(self.last_position)
         
-        elif self.state == AgentState.WANDERING:
-            self._wander(delta_time)
-            self._check_attractions()
-        
-        # Update statistics
-        distance = np.linalg.norm(self.velocity) * delta_time
-        self.total_distance_traveled += distance
-    
-    def _wander(self, delta_time: float):
-        """Random wandering behavior"""
-        # Random direction change
-        self.direction += random.uniform(-0.5, 0.5) * self.wander_strength
-        
-        # Calculate velocity
-        self.velocity = np.array([
-            np.cos(self.direction) * self.speed,
-            np.sin(self.direction) * self.speed
-        ])
-        
-        # Update position
-        new_x = self.position.x + self.velocity[0] * delta_time
-        new_y = self.position.y + self.velocity[1] * delta_time
-        new_position = Position(new_x, new_y, 0)
-        
-        # Check bounds
-        if self.park.is_position_valid(new_position):
-            self.position = new_position
+        if distance_moved < 0.01:  # Basically not moving
+            self.time_since_last_move += delta_time
         else:
-            # Bounce off boundary
-            self.direction += np.pi
+            self.time_since_last_move = 0
+            self.last_position = self.position.copy()
+        
+        # FORCE UNSTUCK if not moving for too long
+        if self.time_since_last_move > self.stuck_threshold:
+            self._force_unstuck()
+            self.time_since_last_move = 0
+        
+        # Normal behavior based on state
+        if self.state == AgentState.WANDERING:
+            self._wander()
+        elif self.state == AgentState.MOVING_TO_TARGET:
+            self._move_to_target(delta_time)
+        elif self.state == AgentState.RESTING:
+            self._rest(delta_time)
     
-    def _move_toward_target(self, delta_time: float):
-        """Move toward target position"""
-        if not self.target_position:
-            return
+    def _force_unstuck(self):
+        """Forcefully unstuck the agent"""
+        print(f"Agent stuck at ({self.position.x:.1f}, {self.position.y:.1f}), forcing movement...")
         
-        # Calculate direction to target
-        dx = self.target_position.x - self.position.x
-        dy = self.target_position.y - self.position.y
-        distance = np.sqrt(dx**2 + dy**2)
+        # Try to teleport to a nearby valid position
+        for distance in [2.0, 3.0, 5.0]:  # Try progressively farther
+            for angle in range(0, 360, 45):
+                rad = math.radians(angle)
+                new_x = self.position.x + math.cos(rad) * distance
+                new_y = self.position.y + math.sin(rad) * distance
+                new_pos = Position(new_x, new_y)
+                
+                if self._is_position_valid(new_pos):
+                    # Teleport here!
+                    self.position = new_pos
+                    self.state = AgentState.WANDERING
+                    self.target = None
+                    self.stuck_timer = 0
+                    print(f"  → Teleported to ({new_pos.x:.1f}, {new_pos.y:.1f})")
+                    return
         
-        # Check if reached
-        if distance < 0.5:
-            self.state = AgentState.WANDERING
-            self.target_position = None
-            return
-        
-        # Move toward target
-        self.velocity = np.array([dx / distance * self.speed,
-                                 dy / distance * self.speed])
-        
-        self.position.x += self.velocity[0] * delta_time
-        self.position.y += self.velocity[1] * delta_time
+        # If all else fails, move to random edge
+        self.position = self._get_edge_position()
+        self.state = AgentState.WANDERING
+        self.target = None
+        print(f"  → Moved to edge position")
     
-    def _check_attractions(self):
-        """Check for nearby attractions (benches, fountains)"""
-        # Find nearby benches
-        nearby_elements = self.park.get_elements_near(
-            self.position, 
-            self.attraction_radius
-        )
+    def _get_edge_position(self) -> Position:
+        """Get a position at the edge of the park"""
+        half_size = self.park.size / 2 - 2
+        side = random.choice(['top', 'bottom', 'left', 'right'])
         
-        for element in nearby_elements:
-            if element.element_type == ElementType.BENCH:
-                # Chance to sit on bench
-                if random.random() < 0.1:  # 10% chance
-                    self._sit_on_bench(element)
-                    break
+        if side == 'top':
+            return Position(random.uniform(-half_size, half_size), half_size)
+        elif side == 'bottom':
+            return Position(random.uniform(-half_size, half_size), -half_size)
+        elif side == 'left':
+            return Position(-half_size, random.uniform(-half_size, half_size))
+        else:
+            return Position(half_size, random.uniform(-half_size, half_size))
     
-    def _sit_on_bench(self, bench_element):
-        """Sit on a bench"""
-        self.state = AgentState.RESTING
-        self.rest_time_remaining = random.uniform(5.0, 15.0)
-        self.position = bench_element.position
-        self.velocity = np.array([0.0, 0.0])
-        self.benches_used += 1
-        self.time_resting += self.rest_time_remaining
-    
-    def set_target(self, target: Position):
-        """Set a target position to move toward"""
-        self.target_position = target
+    def _wander(self):
+        """Find a random target to move to - try harder to find one"""
+        # Try more attempts to find a valid target
+        for attempt in range(20):  # Increased from 10
+            target_pos = self._get_random_position()
+            if self._is_position_valid(target_pos):
+                self.target = target_pos
+                self.state = AgentState.MOVING_TO_TARGET
+                return
+        
+        # If still no valid position, pick a far away position
+        # (likely to be valid since it's far from elements)
+        half_size = self.park.size / 2 - 3
+        far_positions = [
+            Position(half_size, half_size),
+            Position(-half_size, half_size),
+            Position(half_size, -half_size),
+            Position(-half_size, -half_size),
+        ]
+        
+        self.target = random.choice(far_positions)
         self.state = AgentState.MOVING_TO_TARGET
     
-    def get_comfort_score(self) -> float:
-        """Calculate agent's current comfort level"""
-        comfort = 0.5  # Base comfort
+    def _move_to_target(self, delta_time: float):
+        """Move towards target with better obstacle avoidance"""
+        if not self.target:
+            self.state = AgentState.WANDERING
+            return
         
-        # Check for nearby amenities
-        nearby = self.park.get_elements_near(self.position, 5.0)
+        # Calculate direction
+        dx = self.target.x - self.position.x
+        dy = self.target.y - self.position.y
+        dist = math.sqrt(dx * dx + dy * dy)
         
-        has_shade = any(e.element_type == ElementType.TREE for e in nearby)
-        has_water = any(e.element_type == ElementType.FOUNTAIN for e in nearby)
-        has_light = any(e.element_type == ElementType.STREET_LAMP for e in nearby)
+        if dist < 0.3:  # Reached target
+            self._handle_arrival()
+            return
         
-        if has_shade:
-            comfort += 0.2
-        if has_water:
-            comfort += 0.2
-        if has_light:
-            comfort += 0.1
+        # Try to move
+        if dist > 0:
+            move_dist = self.speed * delta_time
+            if move_dist > dist:
+                move_dist = dist
+            
+            new_x = self.position.x + (dx / dist) * move_dist
+            new_y = self.position.y + (dy / dist) * move_dist
+            new_pos = Position(new_x, new_y)
+            
+            if self._is_position_valid(new_pos):
+                # Can move directly
+                self.position = new_pos
+                self.stuck_timer = 0
+            else:
+                # Try alternative paths
+                if not self._try_alternative_path(delta_time):
+                    # Couldn't find alternative, try a completely different target
+                    self.stuck_timer += delta_time
+                    if self.stuck_timer > 1.0:  # Give up on this target quickly
+                        self.state = AgentState.WANDERING
+                        self.stuck_timer = 0
+    
+    def _try_alternative_path(self, delta_time: float) -> bool:
+        """Try to move around obstacle - return True if successful"""
+        if not self.target:
+            return False
         
-        return min(1.0, comfort)
+        # Try more angles for better navigation
+        angles = [30, -30, 60, -60, 90, -90, 120, -120, 45, -45]
+        
+        for angle_offset in angles:
+            dx = self.target.x - self.position.x
+            dy = self.target.y - self.position.y
+            current_angle = math.atan2(dy, dx)
+            
+            new_angle = current_angle + math.radians(angle_offset)
+            move_dist = self.speed * delta_time * 0.7  # Move a bit slower when avoiding
+            
+            new_x = self.position.x + math.cos(new_angle) * move_dist
+            new_y = self.position.y + math.sin(new_angle) * move_dist
+            new_pos = Position(new_x, new_y)
+            
+            if self._is_position_valid(new_pos):
+                self.position = new_pos
+                return True
+        
+        return False
+    
+    def _handle_arrival(self):
+        """Handle reaching target"""
+        nearby_element = self._get_nearby_element()
+        
+        # Only rest 30% of the time (reduced from 60%)
+        if nearby_element and random.random() < 0.3:
+            self.state = AgentState.RESTING
+            self.rest_timer = 0
+        else:
+            # Keep moving!
+            self.state = AgentState.WANDERING
+    
+    def _rest(self, delta_time: float):
+        """Rest at current location - but not for too long"""
+        self.rest_timer += delta_time
+        
+        if self.rest_timer >= self.rest_duration:
+            self.state = AgentState.WANDERING
+            self.rest_timer = 0
+    
+    def _get_random_position(self) -> Position:
+        """Get a random position within park bounds"""
+        margin = 2.0
+        half_size = self.park.size / 2 - margin
+        
+        return Position(
+            random.uniform(-half_size, half_size),
+            random.uniform(-half_size, half_size)
+        )
+    
+    def _is_position_valid(self, pos: Position) -> bool:
+        """Check if position is valid"""
+        half_size = self.park.size / 2
+        if (abs(pos.x) > half_size or abs(pos.y) > half_size):
+            return False
+        
+        # Check collision with park elements
+        for element in self.park.elements:
+            dist = math.sqrt(
+                (pos.x - element.position.x) ** 2 + 
+                (pos.y - element.position.y) ** 2
+            )
+            
+            # Slightly smaller collision radius so agents can get closer
+            collision_radius = element.size / 2 + 0.4  # Reduced from 0.5
+            
+            if dist < collision_radius:
+                return False
+        
+        return True
+    
+    def _get_nearby_element(self):
+        """Get nearby park element if any"""
+        for element in self.park.elements:
+            dist = self.position.distance_to(element.position)
+            if dist < 2.5:  # Slightly larger detection range
+                return element
+        return None
 
 
 class AgentManager:
-    """Manages all pedestrian agents in the park"""
+    """
+    Improved Agent Manager - Agents never disappear AND never freeze!
+    """
     
-    def __init__(self, park: Park, num_agents: int = 10):
+    def __init__(self, park, num_agents: int = 20):
         self.park = park
         self.agents: List[PedestrianAgent] = []
-        self.agent_id_counter = 0
+        self.max_spawn_attempts = 50
         
         # Spawn initial agents
         for _ in range(num_agents):
             self.spawn_agent()
     
-    def spawn_agent(self) -> PedestrianAgent:
-        """Spawn a new agent at a random position"""
-        # Random spawn position
-        half_size = self.park.size / 2
-        spawn_x = random.uniform(-half_size * 0.8, half_size * 0.8)
-        spawn_y = random.uniform(-half_size * 0.8, half_size * 0.8)
-        spawn_pos = Position(spawn_x, spawn_y, 0)
+    def spawn_agent(self) -> bool:
+        """Spawn a new agent in a valid position"""
+        for attempt in range(self.max_spawn_attempts):
+            pos = self._get_spawn_position()
+            
+            if self._is_spawn_position_valid(pos):
+                agent = PedestrianAgent(self.park, pos)
+                self.agents.append(agent)
+                return True
         
-        agent = PedestrianAgent(self.agent_id_counter, spawn_pos, self.park)
-        self.agent_id_counter += 1
+        # Emergency spawn at edge
+        safe_pos = self._get_emergency_spawn_position()
+        agent = PedestrianAgent(self.park, safe_pos)
         self.agents.append(agent)
-        
-        return agent
+        return True
     
-    def remove_agent(self, agent: PedestrianAgent):
-        """Remove an agent"""
-        if agent in self.agents:
-            self.agents.remove(agent)
+    def _get_spawn_position(self) -> Position:
+        """Get a random spawn position"""
+        margin = 3.0
+        half_size = self.park.size / 2 - margin
+        
+        return Position(
+            random.uniform(-half_size, half_size),
+            random.uniform(-half_size, half_size)
+        )
+    
+    def _get_emergency_spawn_position(self) -> Position:
+        """Get a safe emergency spawn position (park edges)"""
+        half_size = self.park.size / 2 - 1
+        side = random.choice(['top', 'bottom', 'left', 'right'])
+        
+        if side == 'top':
+            return Position(random.uniform(-half_size, half_size), half_size)
+        elif side == 'bottom':
+            return Position(random.uniform(-half_size, half_size), -half_size)
+        elif side == 'left':
+            return Position(-half_size, random.uniform(-half_size, half_size))
+        else:
+            return Position(half_size, random.uniform(-half_size, half_size))
+    
+    def _is_spawn_position_valid(self, pos: Position) -> bool:
+        """Check if spawn position is valid"""
+        half_size = self.park.size / 2
+        if (abs(pos.x) > half_size or abs(pos.y) > half_size):
+            return False
+        
+        for element in self.park.elements:
+            dist = math.sqrt(
+                (pos.x - element.position.x) ** 2 + 
+                (pos.y - element.position.y) ** 2
+            )
+            
+            collision_radius = element.size / 2 + 1.5
+            
+            if dist < collision_radius:
+                return False
+        
+        for agent in self.agents:
+            if pos.distance_to(agent.position) < 1.0:
+                return False
+        
+        return True
     
     def update(self, delta_time: float):
         """Update all agents"""
         for agent in self.agents:
             agent.update(delta_time)
     
-    def get_average_comfort(self) -> float:
-        """Get average comfort across all agents"""
-        if not self.agents:
-            return 0.0
+    def set_agent_count(self, target_count: int):
+        """Safely adjust agent count"""
+        current_count = len(self.agents)
         
-        total_comfort = sum(agent.get_comfort_score() for agent in self.agents)
-        return total_comfort / len(self.agents)
+        if target_count > current_count:
+            agents_to_add = target_count - current_count
+            
+            for _ in range(agents_to_add):
+                self.spawn_agent()
+                
+        elif target_count < current_count:
+            agents_to_remove = current_count - target_count
+            
+            for _ in range(agents_to_remove):
+                if self.agents:
+                    self.agents.pop()
     
-    def get_agent_statistics(self) -> dict:
-        """Get statistics about agents"""
-        if not self.agents:
-            return {
-                'num_agents': 0,
-                'average_speed': 0.0,
-                'total_distance': 0.0,
-                'average_comfort': 0.0,
-                'resting_agents': 0
-            }
+    def get_agent_count(self) -> int:
+        """Get current number of agents"""
+        return len(self.agents)
+    
+    def clear_all_agents(self):
+        """Remove all agents"""
+        self.agents.clear()
+    
+    def respawn_all_agents(self, num_agents: int = None):
+        """Clear and respawn all agents"""
+        if num_agents is None:
+            num_agents = len(self.agents)
         
-        return {
-            'num_agents': len(self.agents),
-            'average_speed': np.mean([a.speed for a in self.agents]),
-            'total_distance': sum(a.total_distance_traveled for a in self.agents),
-            'average_comfort': self.get_average_comfort(),
-            'resting_agents': sum(1 for a in self.agents if a.state == AgentState.RESTING)
-        }
+        self.clear_all_agents()
+        
+        for _ in range(num_agents):
+            self.spawn_agent()

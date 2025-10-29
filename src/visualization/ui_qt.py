@@ -4,7 +4,7 @@ Production-grade interface with modern design
 """
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                             QLabel, QSlider, QFrame, QProgressBar, QGroupBox)
+                             QLabel, QSlider, QFrame, QProgressBar, QGroupBox, QComboBox)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor
 
@@ -263,6 +263,49 @@ class ProfessionalQtUI(QWidget):
         self.agent_value_label.setStyleSheet("color: #A0A5B4; font-size: 13px;")
         layout.addWidget(self.agent_value_label)
         
+        # Grid Size Control (NEW)
+        layout.addSpacing(10)
+        line_grid = QFrame()
+        line_grid.setFrameShape(QFrame.HLine)
+        line_grid.setStyleSheet("background-color: #506680;")
+        layout.addWidget(line_grid)
+        
+        grid_size_label = QLabel("Grid Size")
+        grid_size_label.setStyleSheet("color: #96C8FF; font-size: 14px; font-weight: bold;")
+        layout.addWidget(grid_size_label)
+        
+        # Grid size selector (dropdown)
+        self.grid_size_combo = QComboBox()
+        self.grid_size_combo.addItems(["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"])
+        self.grid_size_combo.setCurrentIndex(0)  # Default to 3x3
+        self.grid_size_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2C3E50;
+                color: #ECF0F1;
+                border: 2px solid #34495E;
+                border-radius: 5px;
+                padding: 8px;
+                font-size: 13px;
+            }
+            QComboBox:hover {
+                border-color: #5DADE2;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #34495E;
+                color: #ECF0F1;
+                selection-background-color: #5DADE2;
+            }
+        """)
+        self.grid_size_combo.currentIndexChanged.connect(self._on_grid_size_changed)
+        layout.addWidget(self.grid_size_combo)
+        
+        self.grid_size_info = QLabel(f"Current: 3×3 (9 cells)")
+        self.grid_size_info.setStyleSheet("color: #A0A5B4; font-size: 12px;")
+        layout.addWidget(self.grid_size_info)
+        
         # Stats
         layout.addSpacing(10)
         line2 = QFrame()
@@ -380,17 +423,54 @@ class ProfessionalQtUI(QWidget):
         return panel
     
     def _on_agent_slider_changed(self, value):
-        """Handle agent slider change"""
+        """FIXED: Handle agent slider change without losing agents"""
         self.agent_value_label.setText(f"Agents: {value}")
         
-        current = len(self.app.agent_manager.agents)
-        if value > current:
-            for _ in range(value - current):
-                self.app.agent_manager.spawn_agent()
-        elif value < current:
-            for _ in range(current - value):
-                if self.app.agent_manager.agents:
-                    self.app.agent_manager.agents.pop()
+        # Use the safe set_agent_count method if available
+        if hasattr(self.app.agent_manager, 'set_agent_count'):
+            self.app.agent_manager.set_agent_count(value)
+        else:
+            # Fallback to manual adjustment with better error handling
+            current = len(self.app.agent_manager.agents)
+            
+            if value > current:
+                # Add agents
+                agents_to_add = value - current
+                for i in range(agents_to_add):
+                    success = self.app.agent_manager.spawn_agent()
+                    if not success:
+                        print(f"Warning: Could only spawn {len(self.app.agent_manager.agents)} agents (target: {value})")
+                        break
+            elif value < current:
+                # Remove agents
+                for _ in range(current - value):
+                    if self.app.agent_manager.agents:
+                        self.app.agent_manager.agents.pop()
+    
+    def _on_grid_size_changed(self, index):
+        """Handle grid size change"""
+        # Map index to grid size
+        grid_sizes = [3, 5, 7, 10]
+        new_grid_size = grid_sizes[index]
+        
+        # Grid size names
+        size_names = ["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"]
+        
+        # Calculate total cells
+        total_cells = new_grid_size * new_grid_size
+        
+        # Update info label
+        self.grid_size_info.setText(f"Current: {size_names[index]} ({total_cells} cells)")
+        
+        print(f"\n{'='*50}")
+        print(f"Changing grid size to {new_grid_size}×{new_grid_size}")
+        print(f"{'='*50}")
+        
+        # Apply the change to the park
+        self.app.change_grid_size(new_grid_size)
+        
+        # Update UI
+        self._update_ui()
     
     def _update_ui(self):
         """Update UI with current app state"""

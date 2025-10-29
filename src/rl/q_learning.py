@@ -344,6 +344,14 @@ class ParkDesignTrainer:
         """Test random placement baseline"""
         rewards = []
         
+        # UPDATED: Only use allowed element types (no grass/pathway)
+        allowed_types = [
+            ElementType.BENCH,
+            ElementType.TREE,
+            ElementType.FOUNTAIN,
+            ElementType.STREET_LAMP
+        ]
+        
         for _ in range(num_trials):
             self.park.clear()
             
@@ -351,8 +359,8 @@ class ParkDesignTrainer:
             num_elements = np.random.randint(3, self.park.grid_size * self.park.grid_size)
             
             for _ in range(num_elements):
-                # Random element type and position
-                element_type = random.choice(list(ElementType)[:-1])  # Exclude EMPTY
+                # Random element type (from allowed types) and position
+                element_type = random.choice(allowed_types)
                 grid_x = np.random.randint(0, self.park.grid_size)
                 grid_y = np.random.randint(0, self.park.grid_size)
                 

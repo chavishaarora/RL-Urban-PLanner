@@ -25,20 +25,18 @@ class ActionSpace:
     def __init__(self, grid_size: int = 3):
         self.grid_size = grid_size
         
-        # Element types (excluding EMPTY)
+        # UPDATED: Element types (excluding EMPTY, GRASS_PATCH, PATHWAY)
         self.element_types = [
             ElementType.BENCH,
             ElementType.TREE,
             ElementType.FOUNTAIN,
-            ElementType.STREET_LAMP,
-            ElementType.GRASS_PATCH,
-            ElementType.PATHWAY
+            ElementType.STREET_LAMP
         ]
         
         # Total action space size: grid_size^2 * num_element_types
         self.num_positions = grid_size * grid_size
-        self.num_element_types = len(self.element_types)
-        self.action_space_size = self.num_positions * self.num_element_types
+        self.num_element_types = len(self.element_types)  # Now 4 instead of 6
+        self.action_space_size = self.num_positions * self.num_element_types  # 36 instead of 54
     
     def action_to_index(self, grid_x: int, grid_y: int, element_type: ElementType) -> int:
         """Convert action (position + element_type) to index"""

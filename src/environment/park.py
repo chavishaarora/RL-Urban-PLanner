@@ -18,8 +18,6 @@ except ImportError:
         TREE = "tree"
         FOUNTAIN = "fountain"
         STREET_LAMP = "lamp"
-        GRASS_PATCH = "grass"
-        PATHWAY = "pathway"
         EMPTY = "empty"
 
 

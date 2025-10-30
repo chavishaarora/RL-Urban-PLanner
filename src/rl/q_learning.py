@@ -1,7 +1,7 @@
 """
-Q-Learning Implementation Module with TEMPERATURE VARIATION
+Q-Learning Implementation Module with TEMPERATURE SUPPORT
 Core reinforcement learning algorithm for park design optimization
-NOW TRAINS ACROSS DIFFERENT TEMPERATURE CONDITIONS
+FIXED: Now respects user-set temperature instead of varying it during training
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ import random
 try:
     from environment.park import Park, ElementType
     from config import (rl_config, metrics_config, park_config, 
-                       get_temperature_description)  # NEW: Import temperature helper
+                       get_temperature_description)
     from rl.replay_buffer import ReplayBuffer
     from rl.state import StateEncoder
     from rl.actions import ActionSpace
@@ -195,7 +195,7 @@ class QLearningAgent:
 
 
 class ParkDesignTrainer:
-    """Trainer for park design optimization WITH TEMPERATURE VARIATION"""
+    """Trainer for park design optimization WITH FIXED TEMPERATURE"""
     
     def __init__(self, park: Park, agent: QLearningAgent):
         self.park = park
@@ -203,10 +203,12 @@ class ParkDesignTrainer:
         self.episode_num = 0
         self.current_step = 0
         
-        # ========== NEW: TEMPERATURE VARIATION SETTINGS ==========
-        self.vary_temperature = True  # Enable temperature variation during training
-        self.temp_range = (10.0, 38.0)  # Temperature range to test (cold to hot)
-        self.temperature_history = []  # Track temperatures used in training
+        # ========== TEMPERATURE SETTINGS (FIXED) ==========
+        # By default, respect the user-set temperature (don't vary it)
+        # The training will optimize the design for the current park temperature
+        self.vary_temperature = False  # Set to True for temperature-robust training
+        self.temp_range = (10.0, 38.0)  # Only used if vary_temperature=True
+        self.temperature_history = []  # Track temperatures used
         # ========== END TEMPERATURE SETTINGS ==========
         
         # Import metrics calculators
@@ -235,9 +237,8 @@ class ParkDesignTrainer:
         light_coverage = self.coverage_calc.calculate_light_coverage()
         distribution = self.distribution_calc.calculate_distribution_score()
         
-        # ========== NEW: THERMAL COMFORT ==========
+        # Thermal comfort
         thermal_comfort = self.comfort_calc.calculate_thermal_comfort_score()
-        # ========== END THERMAL COMFORT ==========
         
         # Apply weights from config (these are auto-adjusted by temperature)
         weights = metrics_config.reward_weights
@@ -248,7 +249,7 @@ class ParkDesignTrainer:
             shade_coverage * weights['shade_coverage'] +
             light_coverage * weights['light_coverage'] +
             distribution * weights['distribution'] +
-            thermal_comfort * weights.get('thermal_comfort', 0)  # NEW
+            thermal_comfort * weights.get('thermal_comfort', 0)
         )
         
         # Add penalty for too many elements
@@ -260,34 +261,73 @@ class ParkDesignTrainer:
         
         return reward
     
+    """
+    ROBUST FIX for train_episode method in ParkDesignTrainer class
+
+    Replace the train_episode method in src/rl/q_learning.py with this version.
+    This explicitly preserves the user-set temperature throughout training.
+    """
+
     def train_episode(self, max_steps: int = None) -> float:
-        """Train for one episode WITH TEMPERATURE VARIATION"""
+        """
+        Train for one episode with EXPLICIT temperature preservation
+        
+        FIXED: Explicitly stores and preserves user-set temperature
+        """
         max_steps = max_steps or rl_config.max_steps_per_episode
         
-        # ========== NEW: VARY TEMPERATURE EACH EPISODE ==========
+        # ========== EXPLICIT TEMPERATURE PRESERVATION ==========
+        # Store the user-set temperature BEFORE any modifications
+        user_temperature = self.park.get_temperature()
+        
         if self.vary_temperature:
-            # Sample temperature from range with bias toward extremes and comfortable
+            # Only vary temperature if explicitly enabled
             temp_samples = [
                 random.uniform(10, 15),   # Cold
-                random.uniform(18, 26),   # Comfortable (more common)
-                random.uniform(18, 26),   # Comfortable (duplicate for higher probability)
+                random.uniform(18, 26),   # Comfortable
+                random.uniform(18, 26),   # Comfortable (higher probability)
                 random.uniform(30, 38),   # Hot
             ]
-            temperature = random.choice(temp_samples)
-            self.park.set_temperature(temperature)
-            self.temperature_history.append(temperature)
+            training_temperature = random.choice(temp_samples)
+            self.park.set_temperature(training_temperature)
+            self.temperature_history.append(training_temperature)
             
-            # Log temperature every 10 episodes
             if self.episode_num % 10 == 0:
                 try:
-                    temp_desc = get_temperature_description(temperature)
-                    print(f"  🌡️ Temperature: {temperature:.1f}°C ({temp_desc})")
+                    temp_desc = get_temperature_description(training_temperature)
+                    print(f"  🌡️ Temperature: {training_temperature:.1f}°C ({temp_desc})")
                 except:
-                    print(f"  🌡️ Temperature: {temperature:.1f}°C")
-        # ========== END TEMPERATURE VARIATION ==========
+                    print(f"  🌡️ Temperature: {training_temperature:.1f}°C")
+        else:
+            # CRITICAL: Use and PRESERVE the user-set temperature
+            training_temperature = user_temperature
+            
+            # Explicitly set it (in case anything tried to change it)
+            self.park.set_temperature(training_temperature)
+            self.temperature_history.append(training_temperature)
+            
+            # Log on first episode only
+            if self.episode_num == 0:
+                try:
+                    temp_desc = get_temperature_description(training_temperature)
+                    print(f"  🌡️ Training at FIXED temperature: {training_temperature:.1f}°C ({temp_desc})")
+                except:
+                    print(f"  🌡️ Training at FIXED temperature: {training_temperature:.1f}°C")
         
-        # Reset park
+        # Verify temperature is correct (debugging aid)
+        actual_temp = self.park.get_temperature()
+        if abs(actual_temp - training_temperature) > 0.1:
+            print(f"  ⚠️  WARNING: Temperature mismatch! Expected {training_temperature:.1f}°C, got {actual_temp:.1f}°C")
+        # ========== END TEMPERATURE PRESERVATION ==========
+        
+        # Reset park (this does NOT reset temperature)
         self.park.clear()
+        
+        # Double-check temperature after clear (safety check)
+        if abs(self.park.get_temperature() - training_temperature) > 0.1:
+            print(f"  ⚠️  WARNING: Temperature changed after clear()! Restoring to {training_temperature:.1f}°C")
+            self.park.set_temperature(training_temperature)
+        
         self.current_step = 0
         episode_reward = 0
         
@@ -299,7 +339,6 @@ class ParkDesignTrainer:
             action_result = self.agent.choose_action(self.park, training=True)
             
             if action_result is None:
-                # No valid actions available
                 break
             
             grid_x, grid_y, element_type = action_result
@@ -308,14 +347,14 @@ class ParkDesignTrainer:
             # Execute action
             element = self.park.add_element(element_type, grid_x, grid_y)
             
-            # Calculate reward
+            # Calculate reward (uses current temperature)
             step_reward = self.calculate_reward()
             episode_reward += step_reward
             
             # Get next state
             next_state_hash = self.agent.state_encoder.encode_state(self.park)
             
-            # Check if episode is done
+            # Check if done
             max_elements = self.park.grid_size * self.park.grid_size
             done = (step == max_steps - 1) or (len(self.park.elements) >= max_elements)
             
@@ -324,10 +363,9 @@ class ParkDesignTrainer:
                 state_hash, action_idx, step_reward, next_state_hash, done
             )
             
-            # Learn from experience
+            # Learn
             self.agent.learn(state_hash, action_idx, step_reward, next_state_hash, done)
             
-            # Update state
             state_hash = next_state_hash
             self.current_step += 1
             
@@ -337,10 +375,10 @@ class ParkDesignTrainer:
         # Replay experiences
         self.agent.replay_experience()
         
-        # Update agent statistics
+        # Update statistics
         self.agent.episode_rewards.append(episode_reward)
         
-        # Check if this is the best design
+        # Check for best design
         if episode_reward > self.agent.best_reward:
             self.agent.best_reward = episode_reward
             self.agent.best_design = self.park.to_dict()
@@ -350,6 +388,11 @@ class ParkDesignTrainer:
         
         self.episode_num += 1
         
+        # Final verification: temperature should still be correct
+        final_temp = self.park.get_temperature()
+        if abs(final_temp - training_temperature) > 0.1:
+            print(f"  ⚠️  WARNING: Temperature changed during episode! Was {training_temperature:.1f}°C, now {final_temp:.1f}°C")
+        
         return episode_reward
     
     def train(self, num_episodes: int = None, save_interval: int = 10) -> List[float]:
@@ -357,9 +400,19 @@ class ParkDesignTrainer:
         num_episodes = num_episodes or rl_config.episodes
         rewards = []
         
+        # Get current temperature for logging
+        temperature = self.park.get_temperature()
+        
         print(f"\n{'='*60}")
-        print(f"Starting training with TEMPERATURE VARIATION")
-        print(f"Temperature range: {self.temp_range[0]:.1f}°C - {self.temp_range[1]:.1f}°C")
+        if self.vary_temperature:
+            print(f"Starting training with TEMPERATURE VARIATION")
+            print(f"Temperature range: {self.temp_range[0]:.1f}°C - {self.temp_range[1]:.1f}°C")
+        else:
+            try:
+                temp_desc = get_temperature_description(temperature)
+                print(f"Starting training at FIXED TEMPERATURE: {temperature:.1f}°C ({temp_desc})")
+            except:
+                print(f"Starting training at FIXED TEMPERATURE: {temperature:.1f}°C")
         print(f"{'='*60}\n")
         
         for episode in range(num_episodes):
@@ -374,17 +427,17 @@ class ParkDesignTrainer:
             if (episode + 1) % 10 == 0:
                 recent_rewards = rewards[-10:]
                 recent_temps = self.temperature_history[-10:] if self.temperature_history else []
-                avg_temp = np.mean(recent_temps) if recent_temps else 0
+                avg_temp = np.mean(recent_temps) if recent_temps else temperature
                 
                 print(f"Episode {episode+1}/{num_episodes} - "
                       f"Reward: {reward:.2f} - "
                       f"Avg: {np.mean(recent_rewards):.2f} - "
                       f"Best: {self.agent.best_reward:.2f} - "
                       f"ε: {self.agent.epsilon:.3f} - "
-                      f"Avg Temp: {avg_temp:.1f}°C")
+                      f"Temp: {avg_temp:.1f}°C")
         
-        # ========== NEW: PRINT TEMPERATURE STATISTICS ==========
-        if self.temperature_history:
+        # Print temperature statistics if varied
+        if self.vary_temperature and self.temperature_history:
             print(f"\n{'='*60}")
             print(f"Temperature Training Statistics:")
             print(f"  Min: {min(self.temperature_history):.1f}°C")
@@ -392,7 +445,6 @@ class ParkDesignTrainer:
             print(f"  Mean: {np.mean(self.temperature_history):.1f}°C")
             print(f"  Std Dev: {np.std(self.temperature_history):.1f}°C")
             print(f"{'='*60}\n")
-        # ========== END TEMPERATURE STATISTICS ==========
         
         return rewards
     
@@ -426,7 +478,7 @@ class ParkDesignTrainer:
         
         return np.mean(rewards), np.std(rewards)
     
-    # ========== NEW: TEMPERATURE-SPECIFIC TESTING ==========
+    # ========== TEMPERATURE-SPECIFIC TESTING (OPTIONAL) ==========
     def test_at_temperature(self, temperature: float, num_trials: int = 10) -> Dict:
         """Test the best design at a specific temperature"""
         if not self.agent.best_design:

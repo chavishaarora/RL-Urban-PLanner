@@ -1,6 +1,7 @@
 """
-Q-Learning Implementation Module
+Q-Learning Implementation Module with TEMPERATURE VARIATION
 Core reinforcement learning algorithm for park design optimization
+NOW TRAINS ACROSS DIFFERENT TEMPERATURE CONDITIONS
 """
 
 import numpy as np
@@ -11,13 +12,15 @@ import random
 
 try:
     from environment.park import Park, ElementType
-    from config import rl_config, metrics_config, park_config
+    from config import (rl_config, metrics_config, park_config, 
+                       get_temperature_description)  # NEW: Import temperature helper
     from rl.replay_buffer import ReplayBuffer
     from rl.state import StateEncoder
     from rl.actions import ActionSpace
 except ImportError:
     from ..environment.park import Park, ElementType
-    from ..config import rl_config, metrics_config, park_config
+    from ..config import (rl_config, metrics_config, park_config,
+                         get_temperature_description)
     from .replay_buffer import ReplayBuffer
     from .state import StateEncoder
     from .actions import ActionSpace
@@ -192,13 +195,19 @@ class QLearningAgent:
 
 
 class ParkDesignTrainer:
-    """Trainer for park design optimization"""
+    """Trainer for park design optimization WITH TEMPERATURE VARIATION"""
     
     def __init__(self, park: Park, agent: QLearningAgent):
         self.park = park
         self.agent = agent
         self.episode_num = 0
         self.current_step = 0
+        
+        # ========== NEW: TEMPERATURE VARIATION SETTINGS ==========
+        self.vary_temperature = True  # Enable temperature variation during training
+        self.temp_range = (10.0, 38.0)  # Temperature range to test (cold to hot)
+        self.temperature_history = []  # Track temperatures used in training
+        # ========== END TEMPERATURE SETTINGS ==========
         
         # Import metrics calculators
         try:
@@ -226,7 +235,11 @@ class ParkDesignTrainer:
         light_coverage = self.coverage_calc.calculate_light_coverage()
         distribution = self.distribution_calc.calculate_distribution_score()
         
-        # Apply weights from config
+        # ========== NEW: THERMAL COMFORT ==========
+        thermal_comfort = self.comfort_calc.calculate_thermal_comfort_score()
+        # ========== END THERMAL COMFORT ==========
+        
+        # Apply weights from config (these are auto-adjusted by temperature)
         weights = metrics_config.reward_weights
         
         reward = (
@@ -234,7 +247,8 @@ class ParkDesignTrainer:
             utilization * weights['utilization'] +
             shade_coverage * weights['shade_coverage'] +
             light_coverage * weights['light_coverage'] +
-            distribution * weights['distribution']
+            distribution * weights['distribution'] +
+            thermal_comfort * weights.get('thermal_comfort', 0)  # NEW
         )
         
         # Add penalty for too many elements
@@ -247,8 +261,30 @@ class ParkDesignTrainer:
         return reward
     
     def train_episode(self, max_steps: int = None) -> float:
-        """Train for one episode"""
+        """Train for one episode WITH TEMPERATURE VARIATION"""
         max_steps = max_steps or rl_config.max_steps_per_episode
+        
+        # ========== NEW: VARY TEMPERATURE EACH EPISODE ==========
+        if self.vary_temperature:
+            # Sample temperature from range with bias toward extremes and comfortable
+            temp_samples = [
+                random.uniform(10, 15),   # Cold
+                random.uniform(18, 26),   # Comfortable (more common)
+                random.uniform(18, 26),   # Comfortable (duplicate for higher probability)
+                random.uniform(30, 38),   # Hot
+            ]
+            temperature = random.choice(temp_samples)
+            self.park.set_temperature(temperature)
+            self.temperature_history.append(temperature)
+            
+            # Log temperature every 10 episodes
+            if self.episode_num % 10 == 0:
+                try:
+                    temp_desc = get_temperature_description(temperature)
+                    print(f"  🌡️ Temperature: {temperature:.1f}°C ({temp_desc})")
+                except:
+                    print(f"  🌡️ Temperature: {temperature:.1f}°C")
+        # ========== END TEMPERATURE VARIATION ==========
         
         # Reset park
         self.park.clear()
@@ -321,6 +357,11 @@ class ParkDesignTrainer:
         num_episodes = num_episodes or rl_config.episodes
         rewards = []
         
+        print(f"\n{'='*60}")
+        print(f"Starting training with TEMPERATURE VARIATION")
+        print(f"Temperature range: {self.temp_range[0]:.1f}°C - {self.temp_range[1]:.1f}°C")
+        print(f"{'='*60}\n")
+        
         for episode in range(num_episodes):
             reward = self.train_episode()
             rewards.append(reward)
@@ -332,11 +373,26 @@ class ParkDesignTrainer:
             # Print progress
             if (episode + 1) % 10 == 0:
                 recent_rewards = rewards[-10:]
+                recent_temps = self.temperature_history[-10:] if self.temperature_history else []
+                avg_temp = np.mean(recent_temps) if recent_temps else 0
+                
                 print(f"Episode {episode+1}/{num_episodes} - "
                       f"Reward: {reward:.2f} - "
                       f"Avg: {np.mean(recent_rewards):.2f} - "
                       f"Best: {self.agent.best_reward:.2f} - "
-                      f"ε: {self.agent.epsilon:.3f}")
+                      f"ε: {self.agent.epsilon:.3f} - "
+                      f"Avg Temp: {avg_temp:.1f}°C")
+        
+        # ========== NEW: PRINT TEMPERATURE STATISTICS ==========
+        if self.temperature_history:
+            print(f"\n{'='*60}")
+            print(f"Temperature Training Statistics:")
+            print(f"  Min: {min(self.temperature_history):.1f}°C")
+            print(f"  Max: {max(self.temperature_history):.1f}°C")
+            print(f"  Mean: {np.mean(self.temperature_history):.1f}°C")
+            print(f"  Std Dev: {np.std(self.temperature_history):.1f}°C")
+            print(f"{'='*60}\n")
+        # ========== END TEMPERATURE STATISTICS ==========
         
         return rewards
     
@@ -344,7 +400,6 @@ class ParkDesignTrainer:
         """Test random placement baseline"""
         rewards = []
         
-        # UPDATED: Only use allowed element types (no grass/pathway)
         allowed_types = [
             ElementType.BENCH,
             ElementType.TREE,
@@ -359,7 +414,7 @@ class ParkDesignTrainer:
             num_elements = np.random.randint(3, self.park.grid_size * self.park.grid_size)
             
             for _ in range(num_elements):
-                # Random element type (from allowed types) and position
+                # Random element type and position
                 element_type = random.choice(allowed_types)
                 grid_x = np.random.randint(0, self.park.grid_size)
                 grid_y = np.random.randint(0, self.park.grid_size)
@@ -370,3 +425,59 @@ class ParkDesignTrainer:
             rewards.append(reward)
         
         return np.mean(rewards), np.std(rewards)
+    
+    # ========== NEW: TEMPERATURE-SPECIFIC TESTING ==========
+    def test_at_temperature(self, temperature: float, num_trials: int = 10) -> Dict:
+        """Test the best design at a specific temperature"""
+        if not self.agent.best_design:
+            return {'error': 'No best design available'}
+        
+        # Set temperature
+        original_temp = self.park.get_temperature()
+        self.park.set_temperature(temperature)
+        
+        # Apply best design
+        self.park.from_dict(self.agent.best_design)
+        
+        # Calculate metrics
+        rewards = []
+        for _ in range(num_trials):
+            reward = self.calculate_reward()
+            rewards.append(reward)
+        
+        results = {
+            'temperature': temperature,
+            'avg_reward': np.mean(rewards),
+            'std_reward': np.std(rewards),
+            'comfort': self.comfort_calc.calculate_total_comfort(),
+            'thermal_comfort': self.comfort_calc.calculate_thermal_comfort_score(),
+            'shade_coverage': self.coverage_calc.calculate_shade_coverage()
+        }
+        
+        # Restore original temperature
+        self.park.set_temperature(original_temp)
+        
+        return results
+    
+    def test_across_temperatures(self, temp_range: Tuple[float, float] = None, 
+                                 num_samples: int = 5) -> List[Dict]:
+        """Test the best design across a range of temperatures"""
+        if temp_range is None:
+            temp_range = self.temp_range
+        
+        temperatures = np.linspace(temp_range[0], temp_range[1], num_samples)
+        results = []
+        
+        print(f"\nTesting best design across temperatures:")
+        for temp in temperatures:
+            result = self.test_at_temperature(temp)
+            results.append(result)
+            try:
+                temp_desc = get_temperature_description(temp)
+                print(f"  {temp:.1f}°C ({temp_desc}): Reward={result['avg_reward']:.2f}, "
+                      f"Comfort={result['comfort']:.2f}, Shade={result['shade_coverage']:.2f}")
+            except:
+                print(f"  {temp:.1f}°C: Reward={result['avg_reward']:.2f}")
+        
+        return results
+    # ========== END TEMPERATURE-SPECIFIC TESTING ==========

@@ -1,6 +1,6 @@
 """
-Professional 3D Urban Park RL Application with Dynamic Grid Sizing
-Qt-based UI with embedded OpenGL rendering - ENHANCED VERSION
+Professional 3D Urban Park RL Application with Dynamic Grid Sizing AND TEMPERATURE CONTROL
+Qt-based UI with embedded OpenGL rendering - ENHANCED VERSION WITH TEMPERATURE
 """
 
 import sys
@@ -100,10 +100,10 @@ class UrbanParkRL3D:
     """Main application with Qt UI and embedded OpenGL rendering"""
     
     def __init__(self):
-        print("Initializing Urban Park RL 3D...")
+        print("Initializing Urban Park RL 3D with Temperature Control...")
         
-        # Initialize park with default size
-        self.park = Park(size=30.0, grid_size=3)
+        # Initialize park with default size and temperature
+        self.park = Park(size=30.0, grid_size=3, temperature=25.0)
         self.agent_manager = AgentManager(self.park, num_agents=10)
         
         # Initialize RL
@@ -154,13 +154,12 @@ class UrbanParkRL3D:
         """
         print(f"\nChanging grid size from {self.park.grid_size}×{self.park.grid_size} to {new_grid_size}×{new_grid_size}")
         
-        # Store current agent count
+        # Store current agent count and temperature
         current_agent_count = len(self.agent_manager.agents)
+        current_temperature = self.park.get_temperature()
         
         # FIXED: Keep park size constant, change cell size
-        # The park physical size stays the same (e.g., 30×30 meters)
-        # Only the grid resolution changes
-        park_size = self.park.size  # Keep this constant (e.g., 30.0)
+        park_size = self.park.size
         new_cell_size = park_size / new_grid_size
         
         print(f"  - Park size: {park_size}×{park_size} (UNCHANGED)")
@@ -173,11 +172,12 @@ class UrbanParkRL3D:
         
         # Update park dimensions
         self.park.grid_size = new_grid_size
-        # Park size stays the same!
-        # self.park.size = park_size  # Already set, no change needed
-        self.park.cell_size = new_cell_size  # Update cell size
+        self.park.cell_size = new_cell_size
         self.park.grid_occupancy = [[False for _ in range(new_grid_size)] 
                                     for _ in range(new_grid_size)]
+        
+        # Restore temperature
+        self.park.set_temperature(current_temperature)
         
         # Reinitialize RL components with new grid size
         print("  - Reinitializing RL components...")
@@ -210,6 +210,7 @@ class UrbanParkRL3D:
         print(f"  Grid: {new_grid_size}×{new_grid_size}")
         print(f"  Park size: {park_size}×{park_size} meters (SAME)")
         print(f"  Cell size: {new_cell_size:.2f}×{new_cell_size:.2f} meters (SMALLER)")
+        print(f"  Temperature: {current_temperature:.1f}°C (PRESERVED)")
         print(f"  Cells: {new_grid_size * new_grid_size}")
         print(f"  Agents: {len(self.agent_manager.agents)}")
     
@@ -235,7 +236,8 @@ class UrbanParkRL3D:
             'shade_coverage': self.coverage_calc.calculate_shade_coverage(),
             'light_coverage': self.coverage_calc.calculate_light_coverage(),
             'distribution': self.distribution_calc.calculate_distribution_score(),
-            'total_score': self.trainer.calculate_reward()
+            'total_score': self.trainer.calculate_reward(),
+            'temperature': self.park.get_temperature()  # NEW: Include temperature
         }
     
     def start_training(self, episodes: int):
@@ -243,7 +245,7 @@ class UrbanParkRL3D:
         self.training_active = True
         self.training_episodes_remaining = episodes
         self._total_training_episodes = episodes
-        print(f"Starting training for {episodes} episodes...")
+        print(f"Starting training for {episodes} episodes with temperature variation...")
     
     def stop_training(self):
         """Stop training"""
@@ -269,7 +271,6 @@ class UrbanParkRL3D:
         import random
         self.park.clear()
         
-        # UPDATED: Removed GRASS_PATCH and PATHWAY - only use core elements
         element_types = [ElementType.BENCH, ElementType.TREE, 
                         ElementType.FOUNTAIN, ElementType.STREET_LAMP]
         
@@ -283,7 +284,7 @@ class UrbanParkRL3D:
             available.remove((x, y))
             self.park.add_element(random.choice(element_types), x, y)
         
-        print(f"Random design generated: {num_elements} elements (no pathways/grass)")
+        print(f"Random design generated: {num_elements} elements")
 
 
 class MainWindow(QWidget):
@@ -292,7 +293,7 @@ class MainWindow(QWidget):
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.setWindowTitle("Urban Park RL - 3D Professional")
+        self.setWindowTitle("Urban Park RL - 3D Professional with Temperature")
         self.setGeometry(100, 100, 1600, 900)
         
         # Create layout
@@ -373,7 +374,7 @@ class MainWindow(QWidget):
         
         self.grid_size_combo = QComboBox()
         self.grid_size_combo.addItems(["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"])
-        self.grid_size_combo.setCurrentIndex(0)  # Default to 3x3
+        self.grid_size_combo.setCurrentIndex(0)
         self.grid_size_combo.setStyleSheet("""
             QComboBox {
                 background-color: #2C3E50;
@@ -401,6 +402,29 @@ class MainWindow(QWidget):
         self.grid_size_info = QLabel(f"Current: 3×3 (9 cells)")
         self.grid_size_info.setStyleSheet("color: #A0A5B4; font-size: 12px;")
         layout.addWidget(self.grid_size_info)
+        
+        # ========== NEW: TEMPERATURE CONTROL ==========
+        layout.addSpacing(10)
+        line_temp = QFrame()
+        line_temp.setFrameShape(QFrame.HLine)
+        line_temp.setStyleSheet("background-color: #506680;")
+        layout.addWidget(line_temp)
+        
+        temp_label = QLabel("🌡️ Temperature (°C)")
+        temp_label.setStyleSheet("color: #FF9664; font-size: 14px; font-weight: bold;")
+        layout.addWidget(temp_label)
+        
+        self.temp_slider = QSlider(Qt.Horizontal)
+        self.temp_slider.setMinimum(5)   # 5°C (cold)
+        self.temp_slider.setMaximum(42)  # 42°C (extreme heat)
+        self.temp_slider.setValue(int(self.app.park.get_temperature()))
+        self.temp_slider.valueChanged.connect(self._on_temp_slider_changed)
+        layout.addWidget(self.temp_slider)
+        
+        self.temp_value_label = QLabel(f"Current: {self.temp_slider.value()}°C (Comfortable)")
+        self.temp_value_label.setStyleSheet("color: #A0A5B4; font-size: 13px;")
+        layout.addWidget(self.temp_value_label)
+        # ========== END TEMPERATURE CONTROL ==========
         
         # Separator
         layout.addSpacing(10)
@@ -519,6 +543,17 @@ class MainWindow(QWidget):
         metrics_layout.setSpacing(5)
         metrics_layout.setContentsMargins(20, 30, 20, 20)
         
+        # ========== NEW: TEMPERATURE DISPLAY ==========
+        self.temp_display = QLabel("Temperature: 25.0°C")
+        self.temp_display.setStyleSheet("color: #96FF96; font-size: 14px; font-weight: bold;")
+        metrics_layout.addWidget(self.temp_display)
+        
+        line_temp = QFrame()
+        line_temp.setFrameShape(QFrame.HLine)
+        line_temp.setStyleSheet("background-color: #506680;")
+        metrics_layout.addWidget(line_temp)
+        # ========== END TEMPERATURE DISPLAY ==========
+        
         self.comfort_metric = MetricDisplay("Comfort")
         metrics_layout.addWidget(self.comfort_metric)
         
@@ -548,28 +583,39 @@ class MainWindow(QWidget):
     
     def _on_grid_size_changed(self, index):
         """Handle grid size change"""
-        # Map index to grid size
         grid_sizes = [3, 5, 7, 10]
         new_grid_size = grid_sizes[index]
         
-        # Grid size names
         size_names = ["3×3 (Tiny)", "5×5 (Small)", "7×7 (Medium)", "10×10 (Large)"]
-        
-        # Calculate total cells
         total_cells = new_grid_size * new_grid_size
         
-        # Update info label
         self.grid_size_info.setText(f"Current: {size_names[index]} ({total_cells} cells)")
         
         print(f"\n{'='*50}")
         print(f"Changing grid size to {new_grid_size}×{new_grid_size}")
         print(f"{'='*50}")
         
-        # Apply the change to the park
         self.app.change_grid_size(new_grid_size)
-        
-        # Update UI
         self._update_ui()
+    
+    # ========== NEW: TEMPERATURE SLIDER HANDLER ==========
+    def _on_temp_slider_changed(self, value):
+        """Handle temperature slider change"""
+        from config import get_temperature_description, get_temperature_color
+        
+        # Update temperature in park
+        self.app.park.set_temperature(float(value))
+        
+        # Get description
+        description = get_temperature_description(float(value))
+        
+        # Update label with color
+        color = get_temperature_color(float(value))
+        color_hex = f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
+        
+        self.temp_value_label.setText(f"Current: {value}°C ({description})")
+        self.temp_value_label.setStyleSheet(f"color: {color_hex}; font-size: 13px; font-weight: bold;")
+    # ========== END TEMPERATURE SLIDER HANDLER ==========
     
     def _on_agent_slider_changed(self, value):
         """Handle agent slider change"""
@@ -587,10 +633,21 @@ class MainWindow(QWidget):
     def _update(self):
         """Update loop"""
         self.app.update(1/60)
-        self.gl_widget.update()  # Trigger redraw
+        self.gl_widget.update()
     
     def _update_ui(self):
         """Update UI elements"""
+        # ========== NEW: UPDATE TEMPERATURE DISPLAY ==========
+        from config import get_temperature_description, get_temperature_color
+        temp = self.app.park.get_temperature()
+        temp_desc = get_temperature_description(temp)
+        temp_color = get_temperature_color(temp)
+        color_hex = f"#{temp_color[0]:02x}{temp_color[1]:02x}{temp_color[2]:02x}"
+        
+        self.temp_display.setText(f"Temperature: {temp:.1f}°C ({temp_desc})")
+        self.temp_display.setStyleSheet(f"color: {color_hex}; font-size: 14px; font-weight: bold;")
+        # ========== END TEMPERATURE DISPLAY UPDATE ==========
+        
         # Update stats
         num_elements = len(self.app.park.elements)
         occupancy = self.app.park.get_occupancy_rate()
@@ -621,17 +678,13 @@ class MainWindow(QWidget):
 
 def main():
     """Main entry point"""
-    # Create Qt Application
     qt_app = QApplication(sys.argv)
     
-    # Create main app
     app = UrbanParkRL3D()
     
-    # Create main window
     window = MainWindow(app)
     window.show()
     
-    # Run Qt event loop
     sys.exit(qt_app.exec_())
 
 

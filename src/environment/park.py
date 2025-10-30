@@ -1,6 +1,6 @@
 """
-Park Environment Module
-Core park environment with elements and grid management
+Park Environment Module with Temperature System
+Core park environment with elements, grid management, and temperature
 """
 
 import numpy as np
@@ -105,12 +105,18 @@ class ParkElement:
 
 
 class Park:
-    """Main park environment"""
+    """Main park environment with temperature system"""
     
-    def __init__(self, size: float = 30.0, grid_size: int = 3):
+    def __init__(self, size: float = 30.0, grid_size: int = 3, temperature: float = None):
         self.size = size  # Park size in meters
         self.grid_size = grid_size  # Grid dimensions
         self.cell_size = size / grid_size
+        
+        # Temperature system
+        if temperature is None:
+            self.temperature = park_config.default_temperature
+        else:
+            self.temperature = temperature
         
         # Elements storage
         self.elements: List[ParkElement] = []
@@ -122,6 +128,131 @@ class Park:
         
         # Element counts by type
         self.element_counts = {element_type: 0 for element_type in ElementType}
+        
+        # Thermal zones cache (for performance)
+        self._thermal_zones_cache = None
+        self._thermal_zones_cache_dirty = True
+    
+    def set_temperature(self, temperature: float):
+        """Set the park temperature and update thermal zones"""
+        self.temperature = np.clip(
+            temperature,
+            park_config.min_temperature,
+            park_config.max_temperature
+        )
+        self._thermal_zones_cache_dirty = True
+        
+        # Update reward weights based on new temperature
+        try:
+            from config import update_reward_weights_for_temperature
+            update_reward_weights_for_temperature(self.temperature)
+        except ImportError:
+            pass
+    
+    def get_temperature(self) -> float:
+        """Get current park temperature"""
+        return self.temperature
+    
+    def get_effective_temperature_at_position(self, position: Position) -> float:
+        """
+        Calculate the effective temperature at a specific position
+        considering shade, fountains, etc.
+        
+        Returns:
+            Effective temperature (can be lower than ambient in shade/near fountain)
+        """
+        effective_temp = self.temperature
+        
+        # Check for tree shade
+        trees = self.get_elements_by_type(ElementType.TREE)
+        for tree in trees:
+            distance = position.distance_to(tree.position)
+            shade_radius = tree.size / 2 + 1.0  # Shade extends beyond tree
+            
+            if distance < shade_radius:
+                # Under shade - reduce temperature
+                shade_intensity = 1.0 - (distance / shade_radius)
+                effective_temp -= park_config.tree_shade_cooling * shade_intensity
+        
+        # Check for fountain cooling
+        fountains = self.get_elements_by_type(ElementType.FOUNTAIN)
+        for fountain in fountains:
+            distance = position.distance_to(fountain.position)
+            cooling_radius = park_config.cooling_radius_fountain
+            
+            if distance < cooling_radius:
+                # Near fountain - cooling effect
+                cooling_intensity = 1.0 - (distance / cooling_radius)
+                effective_temp -= park_config.fountain_cooling_effect * cooling_intensity
+        
+        return effective_temp
+    
+    def is_position_in_shade(self, position: Position) -> bool:
+        """Check if a position is in shade (under tree canopy)"""
+        trees = self.get_elements_by_type(ElementType.TREE)
+        for tree in trees:
+            distance = position.distance_to(tree.position)
+            shade_radius = tree.size / 2 + 1.0
+            
+            if distance < shade_radius:
+                return True
+        
+        return False
+    
+    def get_thermal_comfort_at_position(self, position: Position) -> float:
+        """
+        Calculate thermal comfort score at a position (0-1)
+        1.0 = perfectly comfortable
+        0.0 = very uncomfortable
+        """
+        effective_temp = self.get_effective_temperature_at_position(position)
+        temp_min, temp_max = park_config.comfortable_temp_range
+        
+        if temp_min <= effective_temp <= temp_max:
+            # In comfortable range
+            return 1.0
+        elif effective_temp < temp_min:
+            # Too cold
+            deficit = temp_min - effective_temp
+            return max(0.0, 1.0 - deficit / 15.0)  # Drops to 0 at -15 from comfort
+        else:
+            # Too hot
+            excess = effective_temp - temp_max
+            return max(0.0, 1.0 - excess / 15.0)  # Drops to 0 at +15 from comfort
+    
+    def get_thermal_zones(self) -> Dict[str, List[Position]]:
+        """
+        Get thermal zones in the park for visualization
+        Returns dict with 'cool', 'comfortable', 'hot' zones
+        """
+        if not self._thermal_zones_cache_dirty and self._thermal_zones_cache:
+            return self._thermal_zones_cache
+        
+        zones = {'cool': [], 'comfortable': [], 'hot': []}
+        
+        # Sample grid
+        resolution = 20
+        half_size = self.size / 2
+        
+        for i in range(resolution):
+            for j in range(resolution):
+                x = (j / resolution - 0.5) * self.size
+                y = (i / resolution - 0.5) * self.size
+                pos = Position(x, y, 0)
+                
+                temp = self.get_effective_temperature_at_position(pos)
+                temp_min, temp_max = park_config.comfortable_temp_range
+                
+                if temp < temp_min:
+                    zones['cool'].append(pos)
+                elif temp > temp_max:
+                    zones['hot'].append(pos)
+                else:
+                    zones['comfortable'].append(pos)
+        
+        self._thermal_zones_cache = zones
+        self._thermal_zones_cache_dirty = False
+        return zones
     
     def add_element(self, 
                    element_type: ElementType,
@@ -167,6 +298,9 @@ class Park:
         self.grid_occupancy[grid_x][grid_y] = True
         self.element_counts[element_type] += 1
         
+        # Invalidate thermal cache
+        self._thermal_zones_cache_dirty = True
+        
         return element
     
     def remove_element(self, element: ParkElement) -> bool:
@@ -182,6 +316,9 @@ class Park:
             # Update counts
             self.element_counts[element.element_type] -= 1
             
+            # Invalidate thermal cache
+            self._thermal_zones_cache_dirty = True
+            
             return True
         return False
     
@@ -191,6 +328,7 @@ class Park:
         self.grid_occupancy = [[False for _ in range(self.grid_size)] 
                                for _ in range(self.grid_size)]
         self.element_counts = {element_type: 0 for element_type in ElementType}
+        self._thermal_zones_cache_dirty = True
     
     def get_elements_by_type(self, element_type: ElementType) -> List[ParkElement]:
         """Get all elements of a specific type"""
@@ -252,6 +390,7 @@ class Park:
         return {
             'size': self.size,
             'grid_size': self.grid_size,
+            'temperature': self.temperature,
             'elements': [e.to_dict() for e in self.elements],
             'element_counts': {k.value: v for k, v in self.element_counts.items()}
         }
@@ -262,6 +401,7 @@ class Park:
         self.size = data['size']
         self.grid_size = data['grid_size']
         self.cell_size = self.size / self.grid_size
+        self.temperature = data.get('temperature', park_config.default_temperature)
         
         # Restore elements
         for element_data in data['elements']:
@@ -277,6 +417,8 @@ class Park:
             
             # Update counts
             self.element_counts[element.element_type] += 1
+        
+        self._thermal_zones_cache_dirty = True
     
     def __repr__(self) -> str:
-        return f"Park(size={self.size}, grid={self.grid_size}x{self.grid_size}, elements={len(self.elements)})"
+        return f"Park(size={self.size}, grid={self.grid_size}x{self.grid_size}, elements={len(self.elements)}, temp={self.temperature:.1f}°C)"

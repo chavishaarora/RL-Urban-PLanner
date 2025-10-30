@@ -1,5 +1,5 @@
 """
-Configuration file for Urban Park RL System
+Configuration file for Urban Park RL System with Temperature System
 Contains all constants, hyperparameters, and settings
 """
 
@@ -30,6 +30,18 @@ class ParkConfig:
     max_elements_per_type: int = 10
     ground_color: Tuple[int, int, int] = (10, 10, 10)  # Dark ground for night scene
     ambient_light: float = 0.3
+    
+    # Temperature settings (in Celsius)
+    default_temperature: float = 25.0  # Default comfortable temperature
+    min_temperature: float = 5.0       # Minimum (cold winter day)
+    max_temperature: float = 42.0      # Maximum (extreme heat)
+    comfortable_temp_range: Tuple[float, float] = (18.0, 26.0)  # Comfortable range
+    
+    # Temperature effect multipliers
+    shade_value_per_degree_above_comfort: float = 0.05  # How much shade matters when hot
+    cooling_radius_fountain: float = 8.0  # Fountain cooling effect radius
+    fountain_cooling_effect: float = 2.0  # Degrees of cooling near fountain
+    tree_shade_cooling: float = 3.0  # Degrees of cooling under tree shade
     
     # Element sizes (in meters)
     element_sizes = {
@@ -79,12 +91,12 @@ class RLConfig:
     action_space_size: int = 54    # 9 positions × 6 element types
 
 # ============================================
-# METRICS CONFIGURATION
+# METRICS CONFIGURATION WITH TEMPERATURE
 # ============================================
 
 @dataclass
 class MetricsConfig:
-    """Metrics calculation configuration"""
+    """Metrics calculation configuration with temperature awareness"""
     # Comfort metrics
     comfort_bench_tree_radius: float = 5.0  # Meters
     comfort_bench_fountain_radius: float = 8.0
@@ -103,23 +115,43 @@ class MetricsConfig:
     min_utilization: float = 0.3
     optimal_utilization: float = 0.7
     
-    # Reward weights
-    reward_weights = {
+    # Temperature-based reward weights
+    # These are BASE weights - they get adjusted by temperature
+    reward_weights_base = {
         'comfort': 50.0,
         'utilization': 30.0,
         'shade_coverage': 20.0,
-        'light_coverage': 30.0,  # Higher weight for night scene
+        'light_coverage': 30.0,
         'distribution': 20.0,
-        'element_penalty': -5.0  # Per element over limit
+        'thermal_comfort': 40.0,  # NEW: thermal comfort bonus
+        'element_penalty': -5.0
     }
+    
+    # Temperature weight adjustments
+    # At extreme temperatures, these multipliers are applied
+    temp_weight_multipliers_hot = {  # Applied when temp > comfortable_max
+        'shade_coverage': 2.5,  # Shade becomes 2.5x more important
+        'thermal_comfort': 2.0,
+        'comfort': 1.5,  # General comfort more important
+        'light_coverage': 0.5,  # Light less important in hot day
+    }
+    
+    temp_weight_multipliers_cold = {  # Applied when temp < comfortable_min
+        'shade_coverage': 0.3,  # Shade less important when cold
+        'thermal_comfort': 1.5,
+        'light_coverage': 1.5,  # Light more important (warmth association)
+    }
+    
+    # Reward weights property that gets dynamically adjusted
+    reward_weights = reward_weights_base.copy()
 
 # ============================================
-# AGENT CONFIGURATION
+# AGENT CONFIGURATION WITH TEMPERATURE
 # ============================================
 
 @dataclass
 class AgentConfig:
-    """Pedestrian agent configuration"""
+    """Pedestrian agent configuration with temperature awareness"""
     num_agents: int = 10
     spawn_rate: float = 0.5  # Agents per second
     
@@ -130,8 +162,18 @@ class AgentConfig:
     attraction_strength: float = 0.3
     
     # Behavior parameters
-    rest_probability: float = 0.1  # Probability of sitting on bench
+    rest_probability: float = 0.1  # Base probability
     rest_duration: Tuple[float, float] = (5.0, 15.0)  # Min/max rest time
+    
+    # Temperature-affected behavior
+    shade_seeking_temp_threshold: float = 28.0  # Above this, strongly seek shade
+    cold_seeking_temp_threshold: float = 12.0  # Below this, avoid shade
+    
+    # Temperature behavior multipliers
+    shade_preference_multiplier_hot: float = 5.0  # How much more agents prefer shade when hot
+    fountain_preference_multiplier_hot: float = 3.0  # Cooling effect attraction
+    rest_probability_multiplier_hot: float = 1.5  # Rest more when hot
+    rest_duration_multiplier_hot: float = 1.3  # Rest longer when hot
     
     # Pathfinding
     avoidance_radius: float = 1.5
@@ -172,6 +214,11 @@ class VisualizationConfig:
     ui_warning: Tuple[int, int, int] = (255, 167, 38)
     ui_error: Tuple[int, int, int] = (239, 83, 80)
     ui_ai: Tuple[int, int, int] = (171, 71, 188)
+    
+    # Temperature visualization colors
+    temp_cold_color: Tuple[int, int, int] = (100, 150, 255)  # Blue
+    temp_comfortable_color: Tuple[int, int, int] = (100, 255, 100)  # Green
+    temp_hot_color: Tuple[int, int, int] = (255, 100, 50)  # Orange-red
 
 # ============================================
 # LOGGING CONFIGURATION
@@ -234,3 +281,88 @@ def update_config_from_dict(config_dict: Dict[str, Any]):
             setattr(viz_config, key, value)
         elif hasattr(log_config, key):
             setattr(log_config, key, value)
+
+def update_reward_weights_for_temperature(temperature: float):
+    """
+    Dynamically adjust reward weights based on current temperature
+    
+    Args:
+        temperature: Current temperature in Celsius
+    """
+    global metrics_config
+    
+    # Start with base weights
+    metrics_config.reward_weights = metrics_config.reward_weights_base.copy()
+    
+    # Get comfortable range
+    temp_min, temp_max = park_config.comfortable_temp_range
+    
+    if temperature > temp_max:
+        # HOT conditions - shade and thermal comfort are critical
+        temp_excess = temperature - temp_max
+        intensity = min(1.0, temp_excess / 10.0)  # Caps at 10 degrees over comfort
+        
+        for key, multiplier in metrics_config.temp_weight_multipliers_hot.items():
+            if key in metrics_config.reward_weights:
+                # Interpolate between 1.0 and multiplier based on intensity
+                adjusted_mult = 1.0 + (multiplier - 1.0) * intensity
+                metrics_config.reward_weights[key] *= adjusted_mult
+    
+    elif temperature < temp_min:
+        # COLD conditions - shade less important, light/warmth more important
+        temp_deficit = temp_min - temperature
+        intensity = min(1.0, temp_deficit / 10.0)  # Caps at 10 degrees under comfort
+        
+        for key, multiplier in metrics_config.temp_weight_multipliers_cold.items():
+            if key in metrics_config.reward_weights:
+                # Interpolate between 1.0 and multiplier based on intensity
+                adjusted_mult = 1.0 + (multiplier - 1.0) * intensity
+                metrics_config.reward_weights[key] *= adjusted_mult
+    
+    # Log the adjustment
+    if temperature > temp_max or temperature < temp_min:
+        print(f"[Temperature] Adjusted reward weights for {temperature:.1f}°C:")
+        print(f"  Shade coverage weight: {metrics_config.reward_weights['shade_coverage']:.1f}")
+        print(f"  Thermal comfort weight: {metrics_config.reward_weights['thermal_comfort']:.1f}")
+        print(f"  Light coverage weight: {metrics_config.reward_weights['light_coverage']:.1f}")
+
+def get_temperature_description(temperature: float) -> str:
+    """Get human-readable description of temperature"""
+    if temperature < 10:
+        return "Freezing"
+    elif temperature < 15:
+        return "Cold"
+    elif temperature < 18:
+        return "Cool"
+    elif temperature < 26:
+        return "Comfortable"
+    elif temperature < 30:
+        return "Warm"
+    elif temperature < 35:
+        return "Hot"
+    else:
+        return "Extreme Heat"
+
+def get_temperature_color(temperature: float) -> Tuple[int, int, int]:
+    """Get color representing temperature for visualization"""
+    temp_min, temp_max = park_config.comfortable_temp_range
+    
+    if temperature < temp_min:
+        # Blue for cold
+        intensity = max(0.0, min(1.0, (temp_min - temperature) / 15.0))
+        return (
+            int(100 + 155 * (1 - intensity)),
+            int(150 + 105 * (1 - intensity)),
+            255
+        )
+    elif temperature > temp_max:
+        # Red/Orange for hot
+        intensity = max(0.0, min(1.0, (temperature - temp_max) / 15.0))
+        return (
+            255,
+            int(100 + 155 * (1 - intensity)),
+            int(50 + 205 * (1 - intensity))
+        )
+    else:
+        # Green for comfortable
+        return viz_config.temp_comfortable_color

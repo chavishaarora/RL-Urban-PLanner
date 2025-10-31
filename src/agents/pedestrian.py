@@ -1,10 +1,11 @@
 """
-TEMPERATURE-AWARE Agent Manager
-Agents adjust behavior based on temperature:
+TEMPERATURE-AWARE Agent Manager with SITTING BEHAVIOR
+Agents adjust behavior based on temperature AND can sit on benches:
 - Seek shade when hot
 - Avoid cold areas when cold  
 - Rest longer in extreme temperatures
 - Prefer cooling fountains when hot
+- Sit on benches when resting nearby
 """
 
 import random
@@ -25,14 +26,15 @@ class AgentState(Enum):
     RESTING = "resting"
     SEEKING_SHADE = "seeking_shade"  # NEW: Active shade seeking
     SEEKING_COOLNESS = "seeking_coolness"  # NEW: Seeking fountain/cool area
-    SITTING_ON_BENCH = "sitting_on_bench"
+    SITTING_ON_BENCH = "sitting_on_bench"  # NEW: Sitting on bench
 
 
 class Position:
-    """Simple 2D position"""
-    def __init__(self, x: float, y: float):
+    """Simple 3D position"""
+    def __init__(self, x: float, y: float, z: float = 0.0):
         self.x = x
         self.y = y
+        self.z = z
     
     def distance_to(self, other: 'Position') -> float:
         dx = self.x - other.x
@@ -40,11 +42,11 @@ class Position:
         return math.sqrt(dx * dx + dy * dy)
     
     def copy(self):
-        return Position(self.x, self.y)
+        return Position(self.x, self.y, self.z)
 
 
 class PedestrianAgent:
-    """Temperature-aware pedestrian agent with intelligent behavior"""
+    """Temperature-aware pedestrian agent with intelligent behavior including sitting on benches"""
     
     def __init__(self, park, position: Position):
         self.park = park
@@ -58,6 +60,12 @@ class PedestrianAgent:
         self.rest_timer = 0
         self.base_rest_duration = random.uniform(1.5, 4.0)
         self.rest_duration = self.base_rest_duration
+        
+        # Sitting parameters
+        self.is_sitting = False
+        self.sitting_timer = 0
+        self.sitting_duration = random.uniform(3.0, 8.0)  # How long to sit
+        self.current_bench = None  # Track which bench agent is sitting on
         
         # Movement tracking
         self.stuck_timer = 0
@@ -73,7 +81,7 @@ class PedestrianAgent:
         self.time_in_discomfort = 0.0
         
     def update(self, delta_time: float):
-        """Update agent behavior with temperature awareness"""
+        """Update agent behavior with temperature awareness and sitting"""
         
         # Update thermal state
         self._update_thermal_state(delta_time)
@@ -87,21 +95,22 @@ class PedestrianAgent:
             self.time_since_last_move = 0
             self.last_position = self.position.copy()
         
-        # Force unstuck if needed
-        if self.time_since_last_move > self.stuck_threshold:
+        # Force unstuck if needed (but not if sitting!)
+        if self.time_since_last_move > self.stuck_threshold and not self.is_sitting:
             self._force_unstuck()
             self.time_since_last_move = 0
         
-        # Temperature-driven behavior override
-        if self._should_seek_shade():
-            if self.state != AgentState.SEEKING_SHADE:
-                self.state = AgentState.SEEKING_SHADE
-                self.target = None
-        
-        elif self._should_seek_coolness():
-            if self.state != AgentState.SEEKING_COOLNESS:
-                self.state = AgentState.SEEKING_COOLNESS
-                self.target = None
+        # Temperature-driven behavior override (unless sitting)
+        if not self.is_sitting:
+            if self._should_seek_shade():
+                if self.state != AgentState.SEEKING_SHADE:
+                    self.state = AgentState.SEEKING_SHADE
+                    self.target = None
+            
+            elif self._should_seek_coolness():
+                if self.state != AgentState.SEEKING_COOLNESS:
+                    self.state = AgentState.SEEKING_COOLNESS
+                    self.target = None
         
         # Normal behavior based on state
         if self.state == AgentState.WANDERING:
@@ -114,6 +123,8 @@ class PedestrianAgent:
             self._seek_shade(delta_time)
         elif self.state == AgentState.SEEKING_COOLNESS:
             self._seek_coolness(delta_time)
+        elif self.state == AgentState.SITTING_ON_BENCH:
+            self._sit_on_bench(delta_time)
     
     def _update_thermal_state(self, delta_time: float):
         """Update agent's thermal comfort state"""
@@ -294,10 +305,39 @@ class PedestrianAgent:
         
         return None
     
+    def _find_nearest_bench(self) -> Optional[Position]:
+        """Find position at nearest bench for sitting"""
+        from environment.park import ElementType
+        
+        benches = self.park.get_elements_by_type(ElementType.BENCH)
+        
+        if not benches:
+            return None
+        
+        # Find nearest bench
+        min_dist = float('inf')
+        nearest_bench = None
+        
+        for bench in benches:
+            dist = math.sqrt(
+                (self.position.x - bench.position.x) ** 2 +
+                (self.position.y - bench.position.y) ** 2
+            )
+            
+            if dist < min_dist:
+                min_dist = dist
+                nearest_bench = bench
+        
+        if nearest_bench:
+            # Target the bench position directly
+            return Position(nearest_bench.position.x, nearest_bench.position.y)
+        
+        return None
+    
     def _position_to_park_pos(self, pos: Position):
         """Convert agent position to park Position"""
         from environment.park import Position as ParkPosition
-        return ParkPosition(pos.x, pos.y, 0)
+        return ParkPosition(pos.x, pos.y, pos.z)
     
     def _force_unstuck(self):
         """Forcefully unstuck the agent"""
@@ -336,8 +376,23 @@ class PedestrianAgent:
             return Position(half_size, random.uniform(-half_size, half_size))
     
     def _wander(self):
-        """Find a random target with temperature preferences"""
-        # Try to find a thermally comfortable target
+        """Find a random target with temperature preferences and occasional bench-seeking"""
+        # Sometimes actively seek a bench to sit on (especially if uncomfortable or tired)
+        seek_bench_probability = 0.30  # Base 30% chance (increased for more sitting)
+        
+        # Increase probability if uncomfortable
+        if self.discomfort_level > 0.4:
+            seek_bench_probability += 0.30  # Up to 60% chance when uncomfortable
+        
+        # Randomly decide to seek a bench
+        if random.random() < seek_bench_probability:
+            bench_target = self._find_nearest_bench()
+            if bench_target:
+                self.target = bench_target
+                self.state = AgentState.MOVING_TO_TARGET
+                return
+        
+        # Otherwise, try to find a thermally comfortable target
         for attempt in range(20):
             target_pos = self._get_random_position()
             
@@ -387,7 +442,14 @@ class PedestrianAgent:
         dy = self.target.y - self.position.y
         dist = math.sqrt(dx * dx + dy * dy)
         
-        if dist < 0.3:
+        # Check if close enough to target
+        # Use larger threshold (1.5) if there's a bench nearby
+        arrival_threshold = 0.3
+        nearby_bench = self._get_nearby_bench()
+        if nearby_bench:
+            arrival_threshold = 1.5  # Trigger arrival earlier when near bench
+        
+        if dist < arrival_threshold:
             self._handle_arrival()
             return
         
@@ -407,8 +469,12 @@ class PedestrianAgent:
                 if not self._try_alternative_path(delta_time):
                     self.stuck_timer += delta_time
                     if self.stuck_timer > 1.0:
-                        self.state = AgentState.WANDERING
-                        self.stuck_timer = 0
+                        # If stuck near a bench, try to sit anyway
+                        if nearby_bench:
+                            self._handle_arrival()
+                        else:
+                            self.state = AgentState.WANDERING
+                            self.stuck_timer = 0
     
     def _try_alternative_path(self, delta_time: float) -> bool:
         """Try to move around obstacle"""
@@ -436,7 +502,43 @@ class PedestrianAgent:
         return False
     
     def _handle_arrival(self):
-        """Handle reaching target with temperature-aware behavior"""
+        """Handle reaching target with temperature-aware behavior and sitting on benches"""
+        # Check specifically for benches with reasonable radius
+        nearby_bench = self._get_nearby_bench()
+        
+        # If there's a bench nearby, sit on it!
+        if nearby_bench:
+            # Position agent near the bench
+            # Calculate direction from bench to agent
+            dx = self.position.x - nearby_bench.position.x
+            dy = self.position.y - nearby_bench.position.y
+            dist = math.sqrt(dx**2 + dy**2)
+            
+            if dist > 0.1:
+                # Position at a comfortable sitting distance from bench center
+                # (~0.8 units from center, which is close but not overlapping)
+                sitting_distance = 0.8
+                normalized_dx = dx / dist
+                normalized_dy = dy / dist
+                
+                self.position.x = nearby_bench.position.x + normalized_dx * sitting_distance
+                self.position.y = nearby_bench.position.y + normalized_dy * sitting_distance
+            else:
+                # Already at bench, add small offset
+                self.position.x = nearby_bench.position.x + random.uniform(-0.3, 0.3)
+                self.position.y = nearby_bench.position.y + random.uniform(-0.3, 0.3)
+            
+            # Sit on the bench!
+            self.state = AgentState.SITTING_ON_BENCH
+            self.sitting_timer = 0
+            self.is_sitting = True
+            self.current_bench = nearby_bench
+            # Position agent at bench seat height
+            self.position.z = 0.55  # Bench seat height from renderer
+            return
+        
+        # Normal arrival handling (if not sitting)
+        # Check for other nearby elements
         nearby_element = self._get_nearby_element()
         
         # Adjust rest probability based on temperature and discomfort
@@ -474,6 +576,29 @@ class PedestrianAgent:
                 self.rest_duration = self.base_rest_duration
         else:
             self.state = AgentState.WANDERING
+    
+    def _sit_on_bench(self, delta_time: float):
+        """Handle sitting on bench behavior"""
+        self.sitting_timer += delta_time
+        
+        # Check if should stop sitting
+        if self.sitting_timer >= self.sitting_duration:
+            # Done sitting, stand up
+            self._stand_up()
+            self.state = AgentState.WANDERING
+            return
+        
+        # If very uncomfortable, might stand up early
+        if self.discomfort_level > 0.8 and self.sitting_timer > 2.0:
+            self._stand_up()
+            self.state = AgentState.WANDERING
+    
+    def _stand_up(self):
+        """Stand up from bench"""
+        self.is_sitting = False
+        self.position.z = 0.0  # Back to ground level
+        self.sitting_timer = 0
+        self.current_bench = None
     
     def _rest(self, delta_time: float):
         """Rest at current location"""
@@ -527,6 +652,21 @@ class PedestrianAgent:
             )
             if dist < 2.5:
                 return element
+        return None
+    
+    def _get_nearby_bench(self):
+        """Get nearby bench specifically (for sitting)"""
+        from environment.park import ElementType
+        
+        for element in self.park.elements:
+            if element.element_type == ElementType.BENCH:
+                dist = math.sqrt(
+                    (self.position.x - element.position.x) ** 2 +
+                    (self.position.y - element.position.y) ** 2
+                )
+                # Detect benches within 1.8 units (accounts for collision radius)
+                if dist < 1.8:
+                    return element
         return None
 
 
@@ -616,6 +756,10 @@ class AgentManager:
         elif target_count < current_count:
             for _ in range(current_count - target_count):
                 if self.agents:
+                    # If removing a sitting agent, make sure to clean up
+                    agent = self.agents[-1]
+                    if agent.is_sitting:
+                        agent._stand_up()
                     self.agents.pop()
     
     def get_agent_count(self) -> int:
@@ -624,6 +768,10 @@ class AgentManager:
     
     def clear_all_agents(self):
         """Remove all agents"""
+        # Make all sitting agents stand up before clearing
+        for agent in self.agents:
+            if agent.is_sitting:
+                agent._stand_up()
         self.agents.clear()
     
     def respawn_all_agents(self, num_agents: int = None):
@@ -643,7 +791,8 @@ class AgentManager:
                 'avg_discomfort': 0.0,
                 'agents_in_shade': 0,
                 'agents_near_fountain': 0,
-                'agents_seeking_shade': 0
+                'agents_seeking_shade': 0,
+                'agents_sitting': 0
             }
         
         total_discomfort = sum(agent.discomfort_level for agent in self.agents)
@@ -671,10 +820,16 @@ class AgentManager:
             if agent.state == AgentState.SEEKING_SHADE
         )
         
+        agents_sitting = sum(
+            1 for agent in self.agents
+            if agent.is_sitting
+        )
+        
         return {
             'avg_discomfort': total_discomfort / len(self.agents),
             'agents_in_shade': agents_in_shade,
             'agents_near_fountain': agents_near_fountain,
             'agents_seeking_shade': agents_seeking_shade,
+            'agents_sitting': agents_sitting,
             'total_agents': len(self.agents)
         }

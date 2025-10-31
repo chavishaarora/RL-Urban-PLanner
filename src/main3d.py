@@ -472,6 +472,316 @@ class MainWindow(QWidget):
         
         panel.setLayout(layout)
         panel.setFixedWidth(340)
+        time_panel = self._create_time_control_panel()
+        left_layout.addWidget(time_panel)
+        return panel
+    
+    def _on_time_slider_changed(self, value):
+        """Handle time slider change"""
+        # Convert slider value (0-240) to hours (0-24)
+        hour = value / 10.0
+        
+        # Update renderer time
+        if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
+            self.gl_widget.renderer.set_time(hour)
+        
+        # Update display
+        self._update_time_display()
+
+    def _on_speed_button_clicked(self, speed):
+        """Handle speed button click"""
+        if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
+            if speed == 0:
+                # Pause
+                self.gl_widget.renderer.pause_time()
+                self.speed_display.setText("Speed: PAUSED")
+            else:
+                # Resume with new speed
+                self.gl_widget.renderer.resume_time()
+                self.gl_widget.renderer.set_time_speed(speed)
+                
+                # Calculate real-time equivalent
+                if speed == 1:
+                    self.speed_display.setText("Speed: Real-time")
+                else:
+                    seconds_per_hour = 3600 / speed
+                    if seconds_per_hour >= 60:
+                        minutes = seconds_per_hour / 60
+                        self.speed_display.setText(f"Speed: {speed}x ({minutes:.1f} min/hour)")
+                    else:
+                        self.speed_display.setText(f"Speed: {speed}x ({seconds_per_hour:.1f} sec/hour)")
+        
+        # Highlight active button
+        for btn, btn_speed in self.speed_buttons:
+            if btn_speed == speed:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #96D4FF;
+                        color: #0A0F1A;
+                        border: 2px solid #96D4FF;
+                        border-radius: 5px;
+                        padding: 5px;
+                        font-size: 11px;
+                        font-weight: bold;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2D3E50;
+                        color: white;
+                        border: 2px solid #3A5266;
+                        border-radius: 5px;
+                        padding: 5px;
+                        font-size: 11px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #3A5266;
+                        border-color: #96D4FF;
+                    }
+                """)
+
+    def _set_time_preset(self, hour):
+        """Set time to a preset value"""
+        if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
+            self.gl_widget.renderer.set_time(hour)
+            # Update slider
+            self.time_slider.setValue(int(hour * 10))
+            self._update_time_display()
+
+    def _update_time_display(self):
+        """Update time display label"""
+        if not hasattr(self.gl_widget, 'renderer') or not self.gl_widget.renderer:
+            return
+        
+        stats = self.gl_widget.renderer.get_time_stats()
+        
+        # Format time string
+        time_str = stats['formatted_time']
+        time_of_day = stats['time_of_day']
+        
+        # Get emoji for time of day
+        emoji_map = {
+            'Night': '🌙',
+            'Pre-Dawn': '🌌',
+            'Sunrise': '🌅',
+            'Morning': '🌄',
+            'Noon': '☀️',
+            'Afternoon': '🌞',
+            'Sunset': '🌆',
+            'Dusk': '🌇'
+        }
+        emoji = emoji_map.get(time_of_day, '⏰')
+        
+        self.time_display.setText(f"{emoji} Time: {time_str} - {time_of_day}")
+        
+        # Update sun info
+        alt = stats['sun_altitude']
+        az = stats['sun_azimuth']
+        intensity = stats['sun_intensity']
+        
+        if alt > 0:
+            self.sun_info.setText(f"☀️ Sun: Alt {alt:.1f}°, Az {az:.1f}° (Intensity: {intensity:.1%})")
+            self.sun_info.setStyleSheet("color: #FFD700; font-size: 12px;")
+        else:
+            self.sun_info.setText(f"🌙 Sun: Below Horizon ({alt:.1f}°)")
+            self.sun_info.setStyleSheet("color: #6B7280; font-size: 12px;")
+        
+        # Update lamp info
+        if stats['lamps_on']:
+            self.lighting_info.setText("💡 Street Lamps: ON")
+            self.lighting_info.setStyleSheet("color: #FFE66D; font-size: 12px;")
+        else:
+            self.lighting_info.setText("💡 Street Lamps: OFF")
+            self.lighting_info.setStyleSheet("color: #6B7280; font-size: 12px;")
+    
+
+    def _create_time_control_panel(self):
+        """Create time control panel"""
+        from visualization.ui_qt import StyledGroupBox, ModernButton, QSlider, QLabel, QFrame, QComboBox
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout
+        
+        panel = StyledGroupBox("⏰ Time & Lighting")
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 30, 20, 20)
+        
+        # ========== TIME DISPLAY ==========
+        self.time_display = QLabel("Time: 14:00 - Afternoon")
+        self.time_display.setStyleSheet("""
+            color: #FFE66D;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+        """)
+        layout.addWidget(self.time_display)
+        
+        # ========== TIME SLIDER ==========
+        time_label = QLabel("Time of Day")
+        time_label.setStyleSheet("color: #FFE66D; font-size: 14px; font-weight: bold;")
+        layout.addWidget(time_label)
+        
+        self.time_slider = QSlider(Qt.Horizontal)
+        self.time_slider.setMinimum(0)
+        self.time_slider.setMaximum(240)  # 24 hours * 10 for precision
+        self.time_slider.setValue(140)  # Start at 14:00 (2 PM)
+        self.time_slider.valueChanged.connect(self._on_time_slider_changed)
+        self.time_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: none;
+                height: 8px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1a1a2e,
+                    stop:0.25 #ff6b6b,
+                    stop:0.5 #ffd93d,
+                    stop:0.75 #ff6b6b,
+                    stop:1 #1a1a2e);
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: #FFE66D;
+                border: 3px solid #fff;
+                width: 20px;
+                height: 20px;
+                margin: -7px 0;
+                border-radius: 10px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #FFF;
+            }
+        """)
+        layout.addWidget(self.time_slider)
+        
+        # Time markers
+        time_markers = QLabel("🌙 00:00     🌅 06:00     ☀️ 12:00     🌆 18:00     🌙 24:00")
+        time_markers.setStyleSheet("color: #A0A5B4; font-size: 10px;")
+        layout.addWidget(time_markers)
+        
+        # ========== TIME SPEED CONTROL ==========
+        layout.addSpacing(10)
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setStyleSheet("background-color: #506680;")
+        layout.addWidget(separator)
+        
+        speed_label = QLabel("Time Speed")
+        speed_label.setStyleSheet("color: #96D4FF; font-size: 14px; font-weight: bold;")
+        layout.addWidget(speed_label)
+        
+        # Speed preset buttons
+        speed_buttons_layout = QHBoxLayout()
+        speed_buttons_layout.setSpacing(10)
+        
+        speeds = [
+            ("Pause", 0),
+            ("Real", 1),
+            ("5x", 5),
+            ("30x", 30),
+            ("120x", 120),
+            ("Fast", 360)
+        ]
+        
+        self.speed_buttons = []
+        for label, speed in speeds:
+            btn = ModernButton(label)
+            btn.setMaximumWidth(70)
+            btn.setMinimumHeight(35)
+            btn.clicked.connect(lambda checked, s=speed: self._on_speed_button_clicked(s))
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #2D3E50;
+                    color: white;
+                    border: 2px solid #3A5266;
+                    border-radius: 5px;
+                    padding: 5px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #3A5266;
+                    border-color: #96D4FF;
+                }
+                QPushButton:pressed {
+                    background-color: #96D4FF;
+                }
+            """)
+            speed_buttons_layout.addWidget(btn)
+            self.speed_buttons.append((btn, speed))
+        
+        layout.addLayout(speed_buttons_layout)
+        
+        self.speed_display = QLabel("Speed: 120x (1 hour = 30 sec)")
+        self.speed_display.setStyleSheet("color: #A0A5B4; font-size: 12px;")
+        layout.addWidget(self.speed_display)
+        
+        # ========== QUICK TIME PRESETS ==========
+        layout.addSpacing(10)
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        separator2.setStyleSheet("background-color: #506680;")
+        layout.addWidget(separator2)
+        
+        preset_label = QLabel("Quick Time Presets")
+        preset_label.setStyleSheet("color: #FFA07A; font-size: 14px; font-weight: bold;")
+        layout.addWidget(preset_label)
+        
+        presets_layout = QHBoxLayout()
+        presets_layout.setSpacing(8)
+        
+        time_presets = [
+            ("🌅 Dawn", 6.0),
+            ("☀️ Noon", 12.0),
+            ("🌆 Dusk", 18.0),
+            ("🌙 Night", 22.0)
+        ]
+        
+        for label, hour in time_presets:
+            btn = ModernButton(label)
+            btn.setMaximumWidth(80)
+            btn.setMinimumHeight(35)
+            btn.clicked.connect(lambda checked, h=hour: self._set_time_preset(h))
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3D2E5A;
+                    color: white;
+                    border: 2px solid #4A3768;
+                    border-radius: 5px;
+                    padding: 5px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #4A3768;
+                    border-color: #FFA07A;
+                }
+            """)
+            presets_layout.addWidget(btn)
+        
+        layout.addLayout(presets_layout)
+        
+        # ========== SUN INFO ==========
+        layout.addSpacing(10)
+        separator3 = QFrame()
+        separator3.setFrameShape(QFrame.HLine)
+        separator3.setStyleSheet("background-color: #506680;")
+        layout.addWidget(separator3)
+        
+        self.sun_info = QLabel("☀️ Sun: Altitude 45°, Azimuth 180°")
+        self.sun_info.setStyleSheet("color: #FFD700; font-size: 12px;")
+        layout.addWidget(self.sun_info)
+        
+        self.lighting_info = QLabel("💡 Street Lamps: OFF")
+        self.lighting_info.setStyleSheet("color: #A0A5B4; font-size: 12px;")
+        layout.addWidget(self.lighting_info)
+        
+        layout.addStretch()
+        
+        panel.setLayout(layout)
+        panel.setFixedWidth(340)
         return panel
     
     def _create_right_panel(self):
@@ -674,6 +984,8 @@ class MainWindow(QWidget):
             self.training_status.setText("Status: Idle")
             self.training_status.setStyleSheet("color: #C8C8C8; font-size: 13px;")
             self.training_episodes.setText("Episodes: 0")
+        
+        self._update_time_display()
 
 
 def main():

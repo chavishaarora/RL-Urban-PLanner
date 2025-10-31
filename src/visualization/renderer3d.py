@@ -9,6 +9,7 @@ import numpy as np
 import math
 import random
 from typing import Tuple, List, Optional
+from environment.time_system import TimeSystem
 
 try:
     from environment.park import Park
@@ -61,6 +62,12 @@ class Renderer3DQt:
     def __init__(self, park: Park):
         self.park = park
         self.camera = Camera3D()
+
+        self.time_system = TimeSystem(
+            start_hour=14.0,    # Start at 2 PM (nice lighting)
+            time_scale=120.0,   # 120x speed (1 game hour = 30 real seconds)
+            latitude=40.0       # Mid-latitude for nice sun angles
+        )
         
         # Realistic colors with better materials
         self.colors = {
@@ -102,21 +109,98 @@ class Renderer3DQt:
         self.create_display_lists()
     
     def setup_lighting(self):
-        """Enhanced lighting for realistic appearance"""
-        # Main sun light (directional)
-        glLightfv(GL_LIGHT0, GL_AMBIENT, [0.3, 0.3, 0.35, 1.0])
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.9, 0.85, 0.7, 1.0])  # Warm sunlight
-        glLightfv(GL_LIGHT0, GL_SPECULAR, [0.8, 0.8, 0.7, 1.0])
-        glLightfv(GL_LIGHT0, GL_POSITION, [15, 25, 10, 0.0])  # Directional (w=0)
+        """Enhanced lighting with time-of-day support"""
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_LIGHTING)
+        glEnable(GL_LIGHT0)  # Sun
+        glEnable(GL_LIGHT1)  # Fill light
+        glEnable(GL_COLOR_MATERIAL)
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         
-        # Fill light (subtle, blue-ish ambient)
-        glLightfv(GL_LIGHT1, GL_AMBIENT, [0.15, 0.15, 0.2, 1.0])
-        glLightfv(GL_LIGHT1, GL_DIFFUSE, [0.3, 0.35, 0.4, 1.0])  # Cool fill
-        glLightfv(GL_LIGHT1, GL_POSITION, [-10, 15, -10, 0.0])
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         
-        # Enhanced material properties
-        glMaterialfv(GL_FRONT, GL_SPECULAR, [0.4, 0.4, 0.4, 1.0])
-        glMaterialfv(GL_FRONT, GL_SHININESS, [32.0])
+        # Initial lighting (will be updated each frame)
+        self.update_lighting_from_time()
+        
+        glShadeModel(GL_SMOOTH)
+
+    def update_lighting_from_time(self):
+        """Update OpenGL lighting based on current time of day"""
+        sun_pos = self.time_system.sun_position
+        sun_color = self.time_system.get_sun_color()
+        ambient = self.time_system.ambient_light
+        
+        # ========== MAIN SUN LIGHT (GL_LIGHT0) ==========
+        # Directional light that follows the sun
+        sun_direction = [
+            sun_pos.x * 50.0,
+            sun_pos.y * 50.0,
+            sun_pos.z * 50.0,
+            0.0  # Directional light (w=0)
+        ]
+        glLightfv(GL_LIGHT0, GL_POSITION, sun_direction)
+        
+        # Ambient component
+        sun_ambient = [ambient[0], ambient[1], ambient[2], 1.0]
+        glLightfv(GL_LIGHT0, GL_AMBIENT, sun_ambient)
+        
+        # Diffuse component (main sunlight)
+        sun_diffuse = [
+            sun_color[0] * sun_pos.intensity,
+            sun_color[1] * sun_pos.intensity,
+            sun_color[2] * sun_pos.intensity,
+            1.0
+        ]
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_diffuse)
+        
+        # Specular component
+        sun_specular = [
+            sun_color[0] * sun_pos.intensity * 0.8,
+            sun_color[1] * sun_pos.intensity * 0.8,
+            sun_color[2] * sun_pos.intensity * 0.8,
+            1.0
+        ]
+        glLightfv(GL_LIGHT0, GL_SPECULAR, sun_specular)
+        
+        # ========== FILL LIGHT (GL_LIGHT1) ==========
+        # Subtle sky/environment light from opposite direction
+        fill_direction = [
+            -sun_pos.x * 30.0,
+            abs(sun_pos.y) * 20.0 + 10.0,  # Always from above
+            -sun_pos.z * 30.0,
+            0.0
+        ]
+        glLightfv(GL_LIGHT1, GL_POSITION, fill_direction)
+        
+        # Sky-colored fill light
+        sky_color = self.time_system.sky_color
+        fill_intensity = 0.2 + sun_pos.intensity * 0.1
+        
+        fill_ambient = [
+            sky_color[0] * 0.1,
+            sky_color[1] * 0.1,
+            sky_color[2] * 0.1,
+            1.0
+        ]
+        glLightfv(GL_LIGHT1, GL_AMBIENT, fill_ambient)
+        
+        fill_diffuse = [
+            sky_color[0] * fill_intensity,
+            sky_color[1] * fill_intensity,
+            sky_color[2] * fill_intensity,
+            1.0
+        ]
+        glLightfv(GL_LIGHT1, GL_DIFFUSE, fill_diffuse)
+        
+        # No specular for fill light
+        glLightfv(GL_LIGHT1, GL_SPECULAR, [0.0, 0.0, 0.0, 1.0])
+        
+        # ========== MATERIAL PROPERTIES ==========
+        specular = [0.3, 0.3, 0.3, 1.0]
+        shininess = [20.0]
+        glMaterialfv(GL_FRONT, GL_SPECULAR, specular)
+        glMaterialfv(GL_FRONT, GL_SHININESS, shininess)
     
     def create_display_lists(self):
         """Create optimized display lists"""
@@ -124,7 +208,159 @@ class Renderer3DQt:
         glNewList(self.display_lists['ground'], GL_COMPILE)
         self.draw_ground_plane()
         glEndList()
-    
+
+    def update_sky_color(self):
+        """Update the clear color (sky) based on time of day"""
+        sky = self.time_system.sky_color
+        glClearColor(sky[0], sky[1], sky[2], 1.0)
+
+    def draw_lamp_lights(self):
+        """Draw glowing lights on street lamps at night"""
+        if not self.time_system.should_lamps_be_on():
+            return
+        
+        from config import ElementType
+        lamps = self.park.get_elements_by_type(ElementType.STREET_LAMP)
+        
+        if not lamps:
+            return
+        
+        glDisable(GL_LIGHTING)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)  # Additive blending for glow
+        
+        # Warm yellow/orange light color
+        light_color = (1.0, 0.9, 0.6)
+        
+        # Intensity based on darkness
+        intensity = max(0.0, 1.0 - self.time_system.sun_position.intensity)
+        
+        for lamp in lamps:
+            glPushMatrix()
+            
+            # Position at lamp head
+            glTranslatef(lamp.position.x, 4.5, lamp.position.y)
+            
+            # Draw multiple spheres for glow effect
+            for i in range(4):
+                size = 0.3 + i * 0.15
+                alpha = (0.8 / (i + 1)) * intensity
+                
+                glColor4f(
+                    light_color[0],
+                    light_color[1],
+                    light_color[2],
+                    alpha
+                )
+                
+                quad = gluNewQuadric()
+                gluSphere(quad, size, 12, 12)
+                gluDeleteQuadric(quad)
+            
+            glPopMatrix()
+        
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glEnable(GL_LIGHTING)
+
+    def draw_shadows(self):
+        """Draw dynamic shadows based on sun position"""
+        sun_pos = self.time_system.sun_position
+        
+        # Only draw shadows when sun is up
+        if sun_pos.altitude <= 0:
+            return
+        
+        glDisable(GL_LIGHTING)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        # Shadow color (darker and more opaque at noon)
+        shadow_alpha = 0.5 * sun_pos.intensity
+        glColor4f(0.0, 0.0, 0.0, shadow_alpha)
+        
+        # Get shadow direction
+        shadow_dir = self.time_system.calculate_shadow_direction()
+        shadow_length = self.time_system.calculate_shadow_length_multiplier()
+        
+        for element in self.park.elements:
+            # Calculate shadow offset based on sun position
+            offset_x = -shadow_dir[0] * shadow_length * (element.size / 2)
+            offset_z = -shadow_dir[2] * shadow_length * (element.size / 2)
+            
+            glPushMatrix()
+            
+            # Position at ground level, offset by shadow
+            glTranslatef(
+                element.position.x + offset_x, 
+                0.01,  # Slightly above ground to prevent z-fighting
+                element.position.y + offset_z
+            )
+            
+            # Draw elliptical shadow
+            # Shadow is stretched based on sun angle
+            stretch_x = 1.0 + abs(shadow_dir[0]) * shadow_length * 0.3
+            stretch_z = 1.0 + abs(shadow_dir[2]) * shadow_length * 0.3
+            
+            glBegin(GL_TRIANGLE_FAN)
+            glVertex3f(0, 0, 0)
+            
+            # Create elongated circle
+            segments = 16
+            radius = element.size / 2 + 0.2
+            for i in range(segments + 1):
+                angle = (i / segments) * 2 * math.pi
+                x = math.cos(angle) * radius * stretch_x
+                z = math.sin(angle) * radius * stretch_z
+                glVertex3f(x, 0, z)
+            
+            glEnd()
+            
+            glPopMatrix()
+        
+        glEnable(GL_LIGHTING)
+
+    def draw_sun(self):
+        """Draw the sun in the sky"""
+        sun_pos = self.time_system.sun_position
+        
+        # Only draw sun when above horizon
+        if sun_pos.altitude <= 0:
+            return
+        
+        glDisable(GL_LIGHTING)
+        glEnable(GL_BLEND)
+        
+        # Calculate sun position in world
+        distance = 100.0  # Far away
+        sun_x = sun_pos.x * distance
+        sun_y = sun_pos.y * distance
+        sun_z = sun_pos.z * distance
+        
+        glPushMatrix()
+        glTranslatef(sun_x, sun_y, sun_z)
+        
+        # Sun color (varies by time)
+        sun_color = self.time_system.get_sun_color()
+        
+        # Glow effect - multiple overlapping spheres
+        for i in range(3):
+            size = 3.0 + i * 1.5
+            alpha = (1.0 - i * 0.3) * sun_pos.intensity
+            
+            glColor4f(
+                sun_color[0],
+                sun_color[1],
+                sun_color[2],
+                alpha
+            )
+            
+            quad = gluNewQuadric()
+            gluSphere(quad, size, 20, 20)
+            gluDeleteQuadric(quad)
+        
+        glPopMatrix()
+        glEnable(GL_LIGHTING)
+        
     def draw_ground_plane(self):
         """Draw realistic ground with texture-like appearance"""
         park_size = self.park.size
@@ -828,18 +1064,37 @@ class Renderer3DQt:
     
     # ===== MAIN RENDER FUNCTION =====
     
-    def render(self, agent_manager=None):
-        """Main render function"""
+    def render(self, agent_manager=None, delta_time=0.016):
+        """Main render function with time-of-day effects"""
+        
+        # Update time system
+        self.time_system.update(delta_time)
+        
+        # Update dynamic lighting and sky
+        self.update_sky_color()
+        self.update_lighting_from_time()
+        
+        # Clear screen
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
+        # Apply camera
         self.camera.apply()
+        
+        # Draw sun
+        self.draw_sun()
+        
+        # Draw shadows BEFORE objects (so they appear under them)
+        self.draw_shadows()
         
         # Draw ground
         glCallList(self.display_lists['ground'])
         
-        # Draw all elements
+        # Draw all park elements
         for element in self.park.elements:
             self.draw_element(element)
+        
+        # Draw lamp lights at night
+        self.draw_lamp_lights()
         
         # Draw pedestrians
         if agent_manager:
@@ -887,3 +1142,27 @@ class Renderer3DQt:
         glLoadIdentity()
         gluPerspective(60, width / height if height > 0 else 1, 0.1, 500.0)
         glMatrixMode(GL_MODELVIEW)
+
+    def set_time(self, hour: float):
+        """Set time of day directly (0-24)"""
+        self.time_system.set_time(hour)
+
+    def set_time_speed(self, speed: float):
+        """Set time speed multiplier"""
+        self.time_system.time_scale = speed
+
+    def pause_time(self):
+        """Pause time"""
+        self.time_system.is_paused = True
+
+    def resume_time(self):
+        """Resume time"""
+        self.time_system.is_paused = False
+
+    def toggle_time_pause(self):
+        """Toggle time pause"""
+        self.time_system.is_paused = not self.time_system.is_paused
+
+    def get_time_stats(self) -> dict:
+        """Get time statistics"""
+        return self.time_system.get_statistics()

@@ -305,8 +305,8 @@ class MainWindow(QWidget):
         from visualization.ui_qt import StyledGroupBox, ModernButton, QSlider, QLabel, QFrame
         from PyQt5.QtCore import Qt
         
-        left_panel = self._create_left_panel()
-        main_layout.addWidget(left_panel)
+        left_container = self._create_left_container()
+        main_layout.addWidget(left_container)
         
         # Center - OpenGL viewport (flexible)
         self.gl_widget = OpenGLWidget(app)
@@ -472,8 +472,6 @@ class MainWindow(QWidget):
         
         panel.setLayout(layout)
         panel.setFixedWidth(340)
-        time_panel = self._create_time_control_panel()
-        left_layout.addWidget(time_panel)
         return panel
     
     def _on_time_slider_changed(self, value):
@@ -907,6 +905,28 @@ class MainWindow(QWidget):
         
         self.app.change_grid_size(new_grid_size)
         self._update_ui()
+    
+    def _create_left_container(self):
+        """Create left container with both panels"""
+        from PyQt5.QtWidgets import QVBoxLayout, QWidget
+        
+        container = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add design panel
+        design_panel = self._create_left_panel()
+        layout.addWidget(design_panel)
+        
+        # Add time control panel
+        time_panel = self._create_time_control_panel()
+        layout.addWidget(time_panel)
+        
+        layout.addStretch()
+        
+        container.setLayout(layout)
+        return container
     
     # ========== NEW: TEMPERATURE SLIDER HANDLER ==========
     def _on_temp_slider_changed(self, value):

@@ -25,6 +25,7 @@ class AgentState(Enum):
     RESTING = "resting"
     SEEKING_SHADE = "seeking_shade"  # NEW: Active shade seeking
     SEEKING_COOLNESS = "seeking_coolness"  # NEW: Seeking fountain/cool area
+    SITTING_ON_BENCH = "sitting_on_bench"
 
 
 class Position:

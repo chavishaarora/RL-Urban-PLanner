@@ -1103,37 +1103,156 @@ class Renderer3DQt:
         glFlush()
     
     def draw_pedestrians(self, agent_manager):
-        """Draw pedestrian agents as realistically sized figures"""
+        """Draw pedestrian agents with sitting animation"""
         for agent in agent_manager.agents:
             glPushMatrix()
-            
-            # Position at ground level (agent height will be built up from here)
-            glTranslatef(agent.position.x, 0.85, agent.position.y)
-            
-            # Color based on state
-            if agent.state.value == "resting":
-                glColor3f(1.0, 0.6, 0.2)  # Orange
-            elif agent.state.value == "moving_to_target":
-                glColor3f(0.2, 0.9, 0.5)  # Green
+        
+            # Check if agent is sitting
+            if hasattr(agent, 'is_sitting') and agent.is_sitting:
+                # SITTING POSE
+                # Position at bench seat height
+                glTranslatef(agent.position.x, agent.position.z, agent.position.y)
+                
+                # Orange color for sitting
+                glColor3f(1.0, 0.6, 0.2)
+                
+                # Draw sitting figure (shorter, different proportions)
+                # Lower body (seated)
+                glPushMatrix()
+                glTranslatef(0, 0, 0)
+                glScalef(0.5, 0.4, 0.5)  # Wider, shorter for sitting
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Upper body (torso) - angled back slightly
+                glPushMatrix()
+                glTranslatef(0, 0.3, -0.1)  # Slightly back
+                glRotatef(-10, 1, 0, 0)  # Lean back
+                glScalef(0.45, 0.6, 0.35)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Head
+                glPushMatrix()
+                glTranslatef(0, 0.8, -0.05)
+                quad = gluNewQuadric()
+                gluSphere(quad, 0.3, 12, 12)
+                gluDeleteQuadric(quad)
+                glPopMatrix()
+                
+                # Arms (resting on lap or bench)
+                # Left arm
+                glPushMatrix()
+                glTranslatef(-0.35, 0.3, 0)
+                glRotatef(45, 0, 0, 1)
+                glScalef(0.12, 0.4, 0.12)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Right arm
+                glPushMatrix()
+                glTranslatef(0.35, 0.3, 0)
+                glRotatef(-45, 0, 0, 1)
+                glScalef(0.12, 0.4, 0.12)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Legs (bent, hanging down from bench)
+                # Left leg
+                glPushMatrix()
+                glTranslatef(-0.18, -0.15, 0.2)
+                glRotatef(90, 1, 0, 0)
+                glScalef(0.15, 0.15, 0.5)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Right leg
+                glPushMatrix()
+                glTranslatef(0.18, -0.15, 0.2)
+                glRotatef(90, 1, 0, 0)
+                glScalef(0.15, 0.15, 0.5)
+                self._draw_cube()
+                glPopMatrix()
+                
             else:
-                glColor3f(0.4, 0.7, 1.0)  # Blue
+                # STANDING/WALKING POSE (original)
+                # Position at ground level (agent height will be built up from here)
+                glTranslatef(agent.position.x, 0.85, agent.position.y)
+                
+                # Color based on state
+                if agent.state.value == "resting":
+                    glColor3f(1.0, 0.6, 0.2)  # Orange
+                elif agent.state.value == "moving_to_target":
+                    glColor3f(0.2, 0.9, 0.5)  # Green
+                else:
+                    glColor3f(0.4, 0.7, 1.0)  # Blue
+                
+                # Body
+                glPushMatrix()
+                glScalef(0.5, 1.0, 0.35)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Head
+                glPushMatrix()
+                glTranslatef(0, 0.8, 0)
+                quad = gluNewQuadric()
+                gluSphere(quad, 0.35, 12, 12)
+                gluDeleteQuadric(quad)
+                glPopMatrix()
             
-            # Draw simple humanoid shape - REALISTIC SCALE (1.7m tall person)
-            # Body - made 4x larger (was 0.15 wide, now 0.5 wide)
-            glPushMatrix()
-            glScalef(0.5, 1.0, 0.35)  # Width, Height, Depth (realistic proportions)
-            self._draw_cube()
             glPopMatrix()
-            
-            # Head - made proportionally larger
-            glPushMatrix()
-            glTranslatef(0, 0.8, 0)  # Raised higher to sit on top of taller body
-            quad = gluNewQuadric()
-            gluSphere(quad, 0.35, 12, 12)  # Radius increased from 0.12 to 0.35
-            gluDeleteQuadric(quad)
-            glPopMatrix()
-            
-            glPopMatrix()
+
+
+    # ========== ALSO ADD THIS HELPER METHOD IF YOU DON'T HAVE IT ==========
+
+    def _draw_cube(self):
+        """Draw a unit cube"""
+        glBegin(GL_QUADS)
+        # Front
+        glNormal3f(0, 0, 1)
+        glVertex3f(-0.5, -0.5, 0.5)
+        glVertex3f(0.5, -0.5, 0.5)
+        glVertex3f(0.5, 0.5, 0.5)
+        glVertex3f(-0.5, 0.5, 0.5)
+        
+        # Back
+        glNormal3f(0, 0, -1)
+        glVertex3f(-0.5, -0.5, -0.5)
+        glVertex3f(-0.5, 0.5, -0.5)
+        glVertex3f(0.5, 0.5, -0.5)
+        glVertex3f(0.5, -0.5, -0.5)
+        
+        # Top
+        glNormal3f(0, 1, 0)
+        glVertex3f(-0.5, 0.5, -0.5)
+        glVertex3f(-0.5, 0.5, 0.5)
+        glVertex3f(0.5, 0.5, 0.5)
+        glVertex3f(0.5, 0.5, -0.5)
+        
+        # Bottom
+        glNormal3f(0, -1, 0)
+        glVertex3f(-0.5, -0.5, -0.5)
+        glVertex3f(0.5, -0.5, -0.5)
+        glVertex3f(0.5, -0.5, 0.5)
+        glVertex3f(-0.5, -0.5, 0.5)
+        
+        # Right
+        glNormal3f(1, 0, 0)
+        glVertex3f(0.5, -0.5, -0.5)
+        glVertex3f(0.5, 0.5, -0.5)
+        glVertex3f(0.5, 0.5, 0.5)
+        glVertex3f(0.5, -0.5, 0.5)
+        
+        # Left
+        glNormal3f(-1, 0, 0)
+        glVertex3f(-0.5, -0.5, -0.5)
+        glVertex3f(-0.5, -0.5, 0.5)
+        glVertex3f(-0.5, 0.5, 0.5)
+        glVertex3f(-0.5, 0.5, -0.5)
+        
+        glEnd()
+
     
     def resize(self, width: int, height: int):
         """Handle window resize"""

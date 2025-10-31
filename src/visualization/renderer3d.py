@@ -196,7 +196,12 @@ class Renderer3DQt:
         glPopMatrix()
     
     def _draw_realistic_bench(self):
-        """Highly detailed park bench with wooden planks"""
+        """Highly detailed park bench with wooden planks - REALISTICALLY SCALED"""
+        # Scale down by 15% to make more proportional to new agent size
+        # A real park bench: ~2m long, 0.5m wide, 0.8m tall
+        glPushMatrix()
+        glScalef(0.85, 0.85, 0.85)  # Slightly smaller overall
+        
         wood_dark = (0.35, 0.2, 0.1)
         wood_light = (0.45, 0.28, 0.15)
         metal = (0.3, 0.3, 0.32)
@@ -284,6 +289,8 @@ class Renderer3DQt:
             glScalef(0.1, 0.06, 0.5)
             self._draw_rounded_box()
             glPopMatrix()
+        
+        glPopMatrix()  # Close the 0.85 scale transformation
     
     def _draw_realistic_tree(self):
         """Realistic tree with textured trunk and organic canopy"""
@@ -841,11 +848,12 @@ class Renderer3DQt:
         glFlush()
     
     def draw_pedestrians(self, agent_manager):
-        """Draw pedestrian agents as small figures"""
+        """Draw pedestrian agents as realistically sized figures"""
         for agent in agent_manager.agents:
             glPushMatrix()
             
-            glTranslatef(agent.position.x, 0.5, agent.position.y)
+            # Position at ground level (agent height will be built up from here)
+            glTranslatef(agent.position.x, 0.85, agent.position.y)
             
             # Color based on state
             if agent.state.value == "resting":
@@ -855,18 +863,18 @@ class Renderer3DQt:
             else:
                 glColor3f(0.4, 0.7, 1.0)  # Blue
             
-            # Draw simple humanoid shape
-            # Body
+            # Draw simple humanoid shape - REALISTIC SCALE (1.7m tall person)
+            # Body - made 4x larger (was 0.15 wide, now 0.5 wide)
             glPushMatrix()
-            glScalef(0.15, 0.35, 0.1)
+            glScalef(0.5, 1.0, 0.35)  # Width, Height, Depth (realistic proportions)
             self._draw_cube()
             glPopMatrix()
             
-            # Head
+            # Head - made proportionally larger
             glPushMatrix()
-            glTranslatef(0, 0.5, 0)
+            glTranslatef(0, 0.8, 0)  # Raised higher to sit on top of taller body
             quad = gluNewQuadric()
-            gluSphere(quad, 0.12, 12, 12)
+            gluSphere(quad, 0.35, 12, 12)  # Radius increased from 0.12 to 0.35
             gluDeleteQuadric(quad)
             glPopMatrix()
             

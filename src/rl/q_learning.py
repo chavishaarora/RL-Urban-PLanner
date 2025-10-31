@@ -229,28 +229,107 @@ class ParkDesignTrainer:
         self.distribution_calc = DistributionCalculator(park)
     
     def calculate_reward(self) -> float:
-        """Calculate reward based on park metrics"""
+        """
+        Calculate reward based on park metrics with TEMPERATURE-AWARE adjustments
+        
+        ENHANCEMENTS:
+        1. Dynamic weight adjustment based on temperature
+        2. Explicit tree bonus in hot weather
+        3. Shade coverage emphasis at high temps
+        """
+        # Get current temperature
+        temperature = self.park.get_temperature()
+        
         # Get individual metrics
         comfort = self.comfort_calc.calculate_total_comfort()
         utilization = self.utilization_calc.calculate_utilization()
         shade_coverage = self.coverage_calc.calculate_shade_coverage()
         light_coverage = self.coverage_calc.calculate_light_coverage()
         distribution = self.distribution_calc.calculate_distribution_score()
-        
-        # Thermal comfort
         thermal_comfort = self.comfort_calc.calculate_thermal_comfort_score()
         
-        # Apply weights from config (these are auto-adjusted by temperature)
-        weights = metrics_config.reward_weights
+        # ========== DYNAMIC WEIGHT ADJUSTMENT ==========
+        # Adjust weights based on temperature
+        if temperature > 35:  # Extreme heat (35-45°C)
+            weights = {
+                'comfort': 0.12,
+                'utilization': 0.08,
+                'shade_coverage': 0.45,      # ← DRAMATICALLY INCREASED!
+                'light_coverage': 0.0,        # Not relevant in extreme heat
+                'distribution': 0.05,
+                'thermal_comfort': 0.30,      # ← DRAMATICALLY INCREASED!
+                'element_penalty': -0.5
+            }
+        elif temperature > 28:  # Hot (28-35°C)
+            weights = {
+                'comfort': 0.18,
+                'utilization': 0.12,
+                'shade_coverage': 0.30,
+                'light_coverage': 0.03,
+                'distribution': 0.10,
+                'thermal_comfort': 0.25,
+                'element_penalty': -0.5
+            }
+        elif temperature > 20:  # Comfortable (20-28°C)
+            weights = {
+                'comfort': 0.25,
+                'utilization': 0.20,
+                'shade_coverage': 0.15,
+                'light_coverage': 0.10,
+                'distribution': 0.15,
+                'thermal_comfort': 0.15,
+                'element_penalty': -0.5
+            }
+        elif temperature > 10:  # Cool (10-20°C)
+            weights = {
+                'comfort': 0.25,
+                'utilization': 0.20,
+                'shade_coverage': 0.05,
+                'light_coverage': 0.20,
+                'distribution': 0.15,
+                'thermal_comfort': 0.15,
+                'element_penalty': -0.5
+            }
+        else:  # Cold (<10°C)
+            weights = {
+                'comfort': 0.25,
+                'utilization': 0.20,
+                'shade_coverage': 0.0,        # Not needed in cold
+                'light_coverage': 0.25,
+                'distribution': 0.15,
+                'thermal_comfort': 0.15,
+                'element_penalty': -0.5
+            }
         
+        # Calculate base reward
         reward = (
             comfort * weights['comfort'] +
             utilization * weights['utilization'] +
             shade_coverage * weights['shade_coverage'] +
             light_coverage * weights['light_coverage'] +
             distribution * weights['distribution'] +
-            thermal_comfort * weights.get('thermal_comfort', 0)
+            thermal_comfort * weights['thermal_comfort']
         )
+        
+        # ========== EXPLICIT TREE BONUS FOR HOT WEATHER ==========
+        # Add bonus for trees in hot conditions
+        if temperature > 28:
+            # Count trees
+            tree_count = sum(1 for e in self.park.elements 
+                            if e.element_type == ElementType.TREE)
+            
+            # Calculate tree bonus (scales with temperature)
+            # At 42°C with 5 trees: bonus = 5 * (42-28) * 1.0 = 70 points!
+            tree_multiplier = 1.0 if temperature > 35 else 0.5
+            tree_bonus = tree_count * (temperature - 28) * tree_multiplier
+            
+            reward += tree_bonus
+        
+        # ========== ELEMENT DIVERSITY BONUS ==========
+        # Encourage having different types of elements
+        element_types_present = set(e.element_type for e in self.park.elements)
+        diversity_bonus = len(element_types_present) * 2.0
+        reward += diversity_bonus
         
         # Add penalty for too many elements
         element_count = len(self.park.elements)

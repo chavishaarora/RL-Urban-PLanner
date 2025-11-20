@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(find:*)",
+      "Bash(nul)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(type \"d:\\PROJECTS - PERSONAL EXPLORATION\\PARK ANALYSER\\TRIAL-12 (v4.5)\\urbaneyes_v5.0\\utils\\OBJExporter.js\")",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

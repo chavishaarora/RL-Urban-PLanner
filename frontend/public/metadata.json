@@ -1,0 +1,7 @@
+{
+  "name": "UrbanEyes v4.5",
+  "description": "An AI-powered urban analysis tool. Upload map screenshots to generate comprehensive design, ecological, and quantitative reports, and chat with an AI assistant about the site.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

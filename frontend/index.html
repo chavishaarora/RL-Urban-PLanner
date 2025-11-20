@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UrbanEyes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 
+      IMPORTANT: You must replace YOUR_GOOGLE_MAPS_API_KEY with your own Google Maps API key.
+      
+      To get this to work, you must:
+      1. Go to the Google Cloud Console (https://console.cloud.google.com/).
+      2. Create a new project or select an existing one.
+      3. Enable the "Maps JavaScript API", "Places API", and "Maps JavaScript API".
+      4. Create an API Key under "Credentials".
+      5. IMPORTANT: Make sure your API key has NO restrictions (or is configured to allow your development domain), otherwise you will get an ApiTargetBlockedMapError.
+      6. Replace the placeholder key below with your new key.
+     -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBccAkqjJasZHwkgzY4Wg2SpJR9JBXevUA&libraries=places,marker,drawing,geometry,visualization&callback=Function.prototype"></script>
+    
+    <!-- Google Identity Services -->
+    <script>
+      // Add global error handler for Google Sign-In
+      window.onGoogleLibraryLoad = function() {
+        console.log('Google Identity Services loaded successfully');
+      };
+      window.onerror = function(msg, url, line) {
+        if (url && url.includes('gsi/client')) {
+          console.error('Google Sign-In error:', msg);
+        }
+        return false;
+      };
+    </script>
+    <script src="https://accounts.google.com/gsi/client" onload="window.onGoogleLibraryLoad()"></script>
+    
+    <!-- Google API Client Library -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    
+    <style>
+      :root {
+        --brand-teal-dark: #0f766e; /* teal-700 */
+        --brand-teal: #14b8a6; /* teal-500 */
+        --brand-teal-light: #5eead4; /* teal-300 */
+        --brand-bg: #f8fafc; /* slate-50 */
+        --brand-border: #e2e8f0; /* slate-200 */
+        --brand-text: #1e293b; /* slate-800 */
+        --brand-text-light: #64748b; /* slate-500 */
+        --brand-radius-full: 9999px;
+        --brand-radius-lg: 1rem; /* 16px */
+        --brand-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      }
+      
+      /* Style override for browser autofill to match theme */
+      input:-webkit-autofill,
+      input:-webkit-autofill:hover, 
+      input:-webkit-autofill:focus, 
+      input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 30px white inset !important;
+          -webkit-text-fill-color: var(--brand-text) !important;
+          transition: background-color 5000s ease-in-out 0s;
+      }
+
+      /* Base class for all cards */
+      .card {
+        background-color: white;
+        border-radius: var(--brand-radius-lg);
+        border: 1px solid var(--brand-border);
+        box-shadow: var(--brand-shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 
+                    0 2px 6px rgba(0, 0, 0, 0.04);
+        transform: translateY(-2px);
+        border-color: #cbd5e1;
+      }
+      
+      .card.interactive:hover {
+        box-shadow: 0 6px 16px rgba(20, 184, 166, 0.15), 
+                    0 2px 8px rgba(0, 0, 0, 0.08);
+        border-color: var(--brand-teal-light);
+      }
+
+      /* Base styles for all pill-shaped buttons */
+      .btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.5rem 1.25rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          border-radius: var(--brand-radius-full);
+          border: 1px solid transparent;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          cursor: pointer;
+          white-space: nowrap;
+          position: relative;
+          overflow: hidden;
+      }
+      
+      /* Shimmer effect on hover for all buttons */
+      .btn::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.3),
+            transparent
+          );
+          transition: left 0.5s ease;
+      }
+      
+      .btn:hover:not(:disabled)::before {
+          left: 100%;
+      }
+      
+      .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none !important;
+          box-shadow: none !important;
+      }
+      
+      .btn:active:not(:disabled) {
+          transform: scale(0.98);
+      }
+
+      /* The container for a group of toggle buttons */
+      .btn-group {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem;
+          background-color: #f1f5f9; /* slate-100 */
+          border-radius: var(--brand-radius-full);
+          border: 1px solid var(--brand-border);
+          box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+          transition: all 0.3s ease;
+      }
+      .btn-group > .btn {
+          padding: 0.375rem 1rem;
+          border: none;
+          background-color: transparent;
+          color: var(--brand-text-light);
+          box-shadow: none;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .btn-group > .btn:hover:not(.active):not(:disabled) {
+          color: var(--brand-text);
+          background-color: rgba(255, 255, 255, 0.5);
+      }
+      .btn-group > .btn.active {
+          background-color: white;
+          color: var(--brand-text) !important;
+          box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.07), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          transform: translateY(-1px);
+      }
+
+      /* Primary Action Button (Teal) */
+      .btn-primary {
+          background: linear-gradient(135deg, var(--brand-teal-dark), #0d9488);
+          background-size: 200% 200%;
+          color: white;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 0 rgba(20, 184, 166, 0);
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .btn-primary:hover:not(:disabled) {
+          background: linear-gradient(135deg, #0d9488, var(--brand-teal));
+          animation: gradient-shift 2s ease infinite;
+          box-shadow: 0 4px 12px rgba(20, 184, 166, 0.4), 
+                      0 2px 6px rgba(0, 0, 0, 0.15),
+                      0 0 0 3px rgba(20, 184, 166, 0.1);
+          transform: translateY(-2px);
+      }
+      .btn-primary.btn-large {
+          padding: 0.75rem 1.75rem;
+          font-size: 1rem;
+          font-weight: 600;
+      }
+      .btn-primary:hover:not(:disabled).btn-large {
+          box-shadow: 0 6px 16px rgba(20, 184, 166, 0.4), 
+                      0 3px 8px rgba(0, 0, 0, 0.15),
+                      0 0 0 4px rgba(20, 184, 166, 0.15);
+      }
+
+      /* Secondary Action Button (White) */
+      .btn-secondary {
+          background-color: white;
+          color: var(--brand-text);
+          border-color: var(--brand-border);
+          box-shadow: var(--brand-shadow-sm);
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .btn-secondary:hover:not(:disabled) {
+          border-color: var(--brand-teal);
+          background-color: var(--brand-bg);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 
+                      0 0 0 3px rgba(20, 184, 166, 0.1);
+          transform: translateY(-2px);
+      }
+
+      /* Muted/Tertiary Action Button (Gray) */
+      .btn-muted {
+          background-color: #e2e8f0; /* slate-200 */
+          color: #475569; /* slate-600 */
+          border-color: #e2e8f0;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .btn-muted:hover:not(:disabled) {
+          background-color: #cbd5e1; /* slate-300 */
+          border-color: #cbd5e1;
+          color: var(--brand-text);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          transform: translateY(-1px);
+      }
+
+      /* Custom Form Inputs */
+      .form-input {
+        width: 100%;
+        text-align: left;
+        padding: 0.625rem 1rem;
+        border: 1px solid var(--brand-border);
+        background-color: white;
+        color: var(--brand-text);
+        border-radius: var(--brand-radius-full);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        font-weight: 500;
+        font-size: 0.875rem;
+      }
+      .form-input:hover {
+        border-color: #cbd5e1;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+      .form-input:focus, .form-input:focus-within {
+          outline: none;
+          border-color: var(--brand-teal);
+          box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15),
+                      0 2px 8px rgba(20, 184, 166, 0.1);
+          transform: translateY(-1px);
+      }
+      .form-input::placeholder {
+        color: var(--brand-text-light);
+        transition: color 0.3s ease;
+      }
+      .form-input:focus::placeholder {
+        color: #94a3b8;
+      }
+      /* Hide arrows from number inputs */
+      input[type=number]::-webkit-inner-spin-button, 
+      input[type=number]::-webkit-outer-spin-button { 
+        -webkit-appearance: none; 
+        margin: 0; 
+      }
+      input[type=number] {
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+
+      /* Custom Scrollbar Styles */
+      /* For Webkit browsers (Chrome, Safari, Edge) */
+      ::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--brand-bg);
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: var(--brand-border);
+        border-radius: 10px;
+        border: 3px solid var(--brand-bg);
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: var(--brand-teal); /* Changed to brand teal */
+      }
+      
+      /* Enhanced custom scrollbar for specific components */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 0px;
+        height: 0px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: transparent;
+      }
+      
+      /* For Firefox */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--brand-teal) var(--brand-bg); /* Changed to brand teal */
+      }
+      .custom-scrollbar {
+        scrollbar-width: none; /* Hide scrollbar in Firefox */
+        scrollbar-color: transparent transparent;
+      }
+
+      /* Shimmer animation for progress bar */
+      @keyframes shimmer {
+        0% {
+          background-position: -200% center;
+        }
+        100% {
+          background-position: 200% center;
+        }
+      }
+
+      /* Shimmer animation for charts and bars */
+      @keyframes shimmer-bar {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+
+      /* Pulse glow animation */
+      @keyframes pulse-glow {
+        0%, 100% {
+          box-shadow: 0 0 5px rgba(20, 184, 166, 0.3);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(20, 184, 166, 0.6), 0 0 30px rgba(20, 184, 166, 0.4);
+        }
+      }
+
+      /* Slide up animation */
+      @keyframes slide-up {
+        from {
+          transform: translateY(2px);
+        }
+        to {
+          transform: translateY(-2px);
+        }
+      }
+
+      /* Gradient shift animation */
+      @keyframes gradient-shift {
+        0%, 100% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+      }
+
+      /* Scale pulse animation */
+      @keyframes scale-pulse {
+        0%, 100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.05);
+        }
+      }
+
+      /* Fade in animation */
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      /* Scale in animation */
+      @keyframes scale-in {
+        from {
+          opacity: 0;
+          transform: scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      /* Utility animation classes */
+      .animate-shimmer {
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .animate-shimmer::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.3),
+          transparent
+        );
+        animation: shimmer 2s infinite;
+      }
+      
+      /* Shimmer for bar charts */
+      .animate-shimmer {
+        animation: shimmer-bar 2s ease-in-out infinite;
+      }
+      
+      .hover-lift {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .hover-lift:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+      }
+      
+      .hover-glow:hover {
+        box-shadow: 0 0 20px rgba(20, 184, 166, 0.4),
+                    0 0 40px rgba(20, 184, 166, 0.2);
+      }
+      
+      .smooth-transition {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .fade-in {
+        animation: fade-in 0.5s ease-out;
+      }
+      
+      .animate-scale-in {
+        animation: scale-in 0.3s ease-out;
+      }
+      
+      /* Google Maps Autocomplete Dropdown Styling */
+      .pac-container {
+        background-color: white;
+        border: 1px solid var(--brand-border);
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
+        margin-top: 0.5rem;
+        font-family: inherit;
+        z-index: 9999 !important;
+      }
+      
+      .pac-item {
+        padding: 0.75rem 1rem;
+        border-top: 1px solid var(--brand-border);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.875rem;
+        line-height: 1.5;
+      }
+      
+      .pac-item:first-child {
+        border-top: none;
+        border-top-left-radius: 1rem;
+        border-top-right-radius: 1rem;
+      }
+      
+      .pac-item:last-child {
+        border-bottom-left-radius: 1rem;
+        border-bottom-right-radius: 1rem;
+      }
+      
+      .pac-item:hover,
+      .pac-item-selected {
+        background-color: #f0fdfa; /* Light cyan/teal background */
+        border-color: #5eead4; /* Teal accent */
+      }
+      
+      .pac-item-query {
+        font-weight: 600;
+        color: var(--brand-text);
+        font-size: 0.875rem;
+      }
+      
+      .pac-matched {
+        font-weight: 700;
+        color: #0d9488; /* Darker teal-cyan like Draw Area button */
+      }
+      
+      .pac-icon {
+        background-image: none !important;
+        width: 0px !important;
+        height: 0px !important;
+        margin-right: 0rem !important;
+        display: none !important; /* Hide the icon completely */
+      }
+      
+      .pac-icon::before {
+        display: none !important;
+      }
+      
+      .pac-icon-marker {
+        background-image: none !important;
+        display: none !important;
+      }
+      
+      /* Native Select Dropdown Styling */
+      select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1.25rem;
+        padding-right: 2.5rem;
+      }
+      
+      select option {
+        padding: 0.5rem 0.75rem;
+      }
+    
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^18.2.0/",
+    "react": "https://aistudiocdn.com/react@^18.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^18.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
+    "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1",
+    "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
+    "jspdf-autotable": "https://aistudiocdn.com/jspdf-autotable@^5.0.2",
+    "react-dom": "https://aistudiocdn.com/react-dom@^18.2.0",
+    "@react-three/fiber": "https://aistudiocdn.com/@react-three/fiber@^9.4.0",
+    "@react-three/drei": "https://aistudiocdn.com/@react-three/drei@^10.7.6",
+    "three": "https://aistudiocdn.com/three@^0.181.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

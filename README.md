@@ -1,190 +1,190 @@
-# Urban Park Design with Reinforcement Learning
+#UrbanParkDesignwithReinforcementLearning
 
-A Python-based reinforcement learning system for optimizing urban park design. This project uses Q-Learning to intelligently place park elements (benches, trees, fountains, lamps, etc.) to maximize comfort, utility, and aesthetic metrics.
+APython-basedreinforcementlearningsystemforoptimizingurbanparkdesign.ThisprojectusesQ-Learningtointelligentlyplaceparkelements(benches,trees,fountains,lamps,etc.)tomaximizecomfort,utility,andaestheticmetrics.
 
 ##Features
 
-- **Reinforcement Learning**: Q-Learning algorithm with experience replay
-- **3D Visualization**: Real-time park rendering using Pygame and OpenGL
-- **Multiple Park Elements**: Trees, benches, fountains, street lamps, grass patches, pathways
-- **Smart Metrics**: Comfort scores, shade coverage, space utilization, distribution analysis
-- **Agent Simulation**: Simulated pedestrians to evaluate park usability
-- **Modular Architecture**: Clean separation of concerns with organized module structure
+-**ReinforcementLearning**:Q-Learningalgorithmwithexperiencereplay
+-**3DVisualization**:Real-timeparkrenderingusingPygameandOpenGL
+-**MultipleParkElements**:Trees,benches,fountains,streetlamps,grasspatches,pathways
+-**SmartMetrics**:Comfortscores,shadecoverage,spaceutilization,distributionanalysis
+-**AgentSimulation**:Simulatedpedestrianstoevaluateparkusability
+-**ModularArchitecture**:Cleanseparationofconcernswithorganizedmodulestructure
 
-##Project Structure
+##ProjectStructure
 
 ```
 urban-park-rl/
-│
-├── src/
-│   ├── __init__.py
-│   ├── main.py                 # Main entry point
-│   ├── config.py               # Configuration and constants
-│   │
-│   ├── environment/
-│   │   ├── __init__.py
-│   │   ├── park.py            # Park environment class
-│   │   ├── elements.py        # Park elements (Tree, Bench, etc.)
-│   │   └── grid.py            # Grid system for placement
-│   │
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── pedestrian.py      # Pedestrian agent simulation
-│   │   └── movement.py        # Movement patterns and pathfinding
-│   │
-│   ├── rl/
-│   │   ├── __init__.py
-│   │   ├── q_learning.py      # Q-Learning implementation
-│   │   ├── state.py           # State representation
-│   │   ├── actions.py         # Action space definition
-│   │   └── replay_buffer.py   # Experience replay buffer
-│   │
-│   ├── metrics/
-│   │   ├── __init__.py
-│   │   ├── comfort.py         # Comfort score calculation
-│   │   ├── utilization.py     # Space utilization metrics
-│   │   ├── coverage.py        # Shade and lighting coverage
-│   │   └── distribution.py    # Element distribution analysis
-│   │
-│   ├── visualization/
-│   │   ├── __init__.py
-│   │   ├── renderer.py        # 3D rendering engine
-│   │   ├── camera.py          # Camera controls
-│   │   ├── lighting.py        # Lighting system
-│   │   └── ui.py              # User interface components
-│   │
-│   └── utils/
-│       ├── __init__.py
-│       ├── logger.py          # Logging utilities
-│       ├── data_manager.py    # Save/load functionality
-│       └── helpers.py         # Helper functions
-│
-├── tests/
-│   ├── __init__.py
-│   ├── test_environment.py
-│   ├── test_rl.py
-│   ├── test_metrics.py
-│   └── test_agents.py
-│
-├── experiments/
-│   ├── baseline_random.py     # Random baseline experiments
-│   ├── training_runs.py       # Training experiments
-│   └── analysis.ipynb        # Jupyter notebook for analysis
-│
-├── data/
-│   ├── models/               # Saved Q-tables and models
-│   ├── logs/                 # Training logs
-│   └── results/              # Experiment results
-│
-├── assets/
-│   ├── textures/             # Texture files for 3D elements
-│   ├── models/               # 3D model files (if any)
-│   └── icons/                # UI icons
-│
-├── docs/
-│   ├── architecture.md       # System architecture
-│   ├── api.md                # API documentation
-│   └── algorithms.md         # Algorithm explanations
-│
-├── requirements.txt          # Python dependencies
-├── setup.py                  # Package setup
-├── .gitignore               # Git ignore file
-└── LICENSE                   # License file
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬src/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬main.py#Mainentrypoint
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬config.py#Configurationandconstants
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬environment/
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬park.py#Parkenvironmentclass
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬elements.py#Parkelements(Tree,Bench,etc.)
+Ã¢â€â€šÃ¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬grid.py#Gridsystemforplacement
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬agents/
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬pedestrian.py#Pedestrianagentsimulation
+Ã¢â€â€šÃ¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬movement.py#Movementpatternsandpathfinding
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬rl/
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬q_learning.py#Q-Learningimplementation
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬state.py#Staterepresentation
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬actions.py#Actionspacedefinition
+Ã¢â€â€šÃ¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬replay_buffer.py#Experiencereplaybuffer
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬metrics/
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬comfort.py#Comfortscorecalculation
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬utilization.py#Spaceutilizationmetrics
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬coverage.py#Shadeandlightingcoverage
+Ã¢â€â€šÃ¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬distribution.py#Elementdistributionanalysis
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬visualization/
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬renderer.py#3Drenderingengine
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬camera.py#Cameracontrols
+Ã¢â€â€šÃ¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬lighting.py#Lightingsystem
+Ã¢â€â€šÃ¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬ui.py#Userinterfacecomponents
+Ã¢â€â€šÃ¢â€â€š
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬utils/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬logger.py#Loggingutilities
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬data_manager.py#Save/loadfunctionality
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬helpers.py#Helperfunctions
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬tests/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬__init__.py
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬test_environment.py
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬test_rl.py
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬test_metrics.py
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬test_agents.py
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬experiments/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬baseline_random.py#Randombaselineexperiments
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬training_runs.py#Trainingexperiments
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬analysis.ipynb#Jupyternotebookforanalysis
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬data/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬models/#SavedQ-tablesandmodels
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬logs/#Traininglogs
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬results/#Experimentresults
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬assets/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬textures/#Texturefilesfor3Delements
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬models/#3Dmodelfiles(ifany)
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬icons/#UIicons
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬docs/
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬architecture.md#Systemarchitecture
+Ã¢â€â€šÃ¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬api.md#APIdocumentation
+Ã¢â€â€šÃ¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬algorithms.md#Algorithmexplanations
+Ã¢â€â€š
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬requirements.txt#Pythondependencies
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬setup.py#Packagesetup
+Ã¢â€Å“Ã¢â€â‚¬Ã¢â€â‚¬.gitignore#Gitignorefile
+Ã¢â€â€Ã¢â€â‚¬Ã¢â€â‚¬LICENSE#Licensefile
 ```
 
-## Installation
+##Installation
 
-### Prerequisites
-- Python 3.8 or higher
-- pip package manager
+###Prerequisites
+-Python3.8orhigher
+-pippackagemanager
 
-### Setup
+###Setup
 
-1. Clone the repository:
+1.Clonetherepository:
 ```bash
-git clone https://github.com/yourusername/urban-park-rl.git
-cd urban-park-rl
+gitclonehttps://github.com/yourusername/urban-park-rl.git
+cdurban-park-rl
 ```
 
-2. Create a virtual environment (recommended):
+2.Createavirtualenvironment(recommended):
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python-mvenvvenv
+sourcevenv/bin/activate#OnWindows:venv\Scripts\activate
 ```
 
-3. Install dependencies:
+3.Installdependencies:
 ```bash
-pip install -r requirements.txt
+pipinstall-rrequirements.txt
 ```
 
 ##Usage
 
-### Quick Start
+###QuickStart
 
-Run the main simulation:
+Runthemainsimulation:
 ```bash
-python src/main.py
+pythonsrc/main.py
 ```
 
-### Training the RL Agent
+###TrainingtheRLAgent
 
 ```bash
-python src/main.py --mode train --episodes 1000
+pythonsrc/main.py--modetrain--episodes1000
 ```
 
-### Testing with Random Baseline
+###TestingwithRandomBaseline
 
 ```bash
-python experiments/baseline_random.py
+pythonexperiments/baseline_random.py
 ```
 
-### Interactive Mode
+###InteractiveMode
 
 ```bash
-python src/main.py --mode interactive
+pythonsrc/main.py--modeinteractive
 ```
 
-##Algorithm Details
+##AlgorithmDetails
 
-The system uses Q-Learning with the following specifications:
+ThesystemusesQ-Learningwiththefollowingspecifications:
 
-- **State Space**: 3x3 grid representation with element encoding
-- **Action Space**: Place element at position (6 element types × 9 positions)
-- **Reward Function**: Weighted combination of comfort, utilization, coverage, and distribution metrics
-- **Learning Rate**: 0.1 (configurable)
-- **Discount Factor**: 0.95 (configurable)
-- **Epsilon**: 0.3 with decay (configurable)
+-**StateSpace**:3x3gridrepresentationwithelementencoding
+-**ActionSpace**:Placeelementatposition(6elementtypesÃƒâ€”9positions)
+-**RewardFunction**:Weightedcombinationofcomfort,utilization,coverage,anddistributionmetrics
+-**LearningRate**:0.1(configurable)
+-**DiscountFactor**:0.95(configurable)
+-**Epsilon**:0.3withdecay(configurable)
 
 ##Metrics
 
-1. **Comfort Score**: Evaluates placement of benches near shade and amenities
-2. **Utilization**: Percentage of effectively used space
-3. **Shade Coverage**: Tree canopy coverage percentage
-4. **Distribution**: Uniformity of element placement
-5. **Total Score**: Weighted combination of all metrics
+1.**ComfortScore**:Evaluatesplacementofbenchesnearshadeandamenities
+2.**Utilization**:Percentageofeffectivelyusedspace
+3.**ShadeCoverage**:Treecanopycoveragepercentage
+4.**Distribution**:Uniformityofelementplacement
+5.**TotalScore**:Weightedcombinationofallmetrics
 
 ##Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributionsarewelcome!PleasefeelfreetosubmitaPullRequest.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1.Forktherepository
+2.Createyourfeaturebranch(`gitcheckout-bfeature/AmazingFeature`)
+3.Commityourchanges(`gitcommit-m'AddsomeAmazingFeature'`)
+4.Pushtothebranch(`gitpushoriginfeature/AmazingFeature`)
+5.OpenaPullRequest
 
 ##License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+ThisprojectislicensedundertheMITLicense-seethe[LICENSE](LICENSE)filefordetails.
 
 ##Acknowledgments
 
-- Inspired by urban planning optimization research
-- Built with Python scientific computing stack
-- Special thanks to the reinforcement learning community
+-Inspiredbyurbanplanningoptimizationresearch
+-BuiltwithPythonscientificcomputingstack
+-Specialthankstothereinforcementlearningcommunity
 
-## 📧 Contact
+##Ã°Å¸â€œÂ§Contact
 
-Your Name - [@yourtwitter](https://twitter.com/yourtwitter) - email@example.com
+YourName-[@yourtwitter](https://twitter.com/yourtwitter)-email@example.com
 
-Project Link: [https://github.com/yourusername/urban-park-rl](https://github.com/yourusername/urban-park-rl)
+ProjectLink:[https://github.com/yourusername/urban-park-rl](https://github.com/yourusername/urban-park-rl)

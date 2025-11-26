@@ -1103,9 +1103,25 @@ class Renderer3DQt:
         glFlush()
     
     def draw_pedestrians(self, agent_manager):
-        """Draw pedestrian agents with sitting animation"""
+        """Draw pedestrian agents with age-based color coding and sitting animation"""
+        if not agent_manager or not agent_manager.agents:
+            return  # No agents to draw
+        
+        # Debug: Print agent count occasionally
+        import random
+        if random.random() < 0.01:  # 1% of frames
+            print(f"Drawing {len(agent_manager.agents)} agents")
+        
         for agent in agent_manager.agents:
             glPushMatrix()
+            
+            # IMPORTANT: Set material properties so agents are visible
+            glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, [1.0, 1.0, 1.0, 1.0])
+            glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [0.5, 0.5, 0.5, 1.0])
+            glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, [0.1, 0.1, 0.1, 1.0])  # Slight glow
+            
+            # Get agent's display color (age-based with state modulation)
+            color = agent.get_display_color() if hasattr(agent, 'get_display_color') else (0.5, 0.5, 0.5)
         
             # Check if agent is sitting
             if hasattr(agent, 'is_sitting') and agent.is_sitting:
@@ -1113,8 +1129,8 @@ class Renderer3DQt:
                 # Position at bench seat height
                 glTranslatef(agent.position.x, agent.position.z, agent.position.y)
                 
-                # Orange color for sitting
-                glColor3f(1.0, 0.6, 0.2)
+                # Use age-based color (slightly dimmed for sitting)
+                glColor3f(*color)
                 
                 # Draw sitting figure (shorter, different proportions)
                 # Lower body (seated)
@@ -1179,15 +1195,10 @@ class Renderer3DQt:
                 # Position at ground level (agent height will be built up from here)
                 glTranslatef(agent.position.x, 0.85, agent.position.y)
                 
-                # Color based on state
-                if agent.state.value == "resting":
-                    glColor3f(1.0, 0.6, 0.2)  # Orange
-                elif agent.state.value == "moving_to_target":
-                    glColor3f(0.2, 0.9, 0.5)  # Green
-                else:
-                    glColor3f(0.4, 0.7, 1.0)  # Blue
+                # Use age-based color with state modulation
+                glColor3f(*color)
                 
-                # Body
+                # Body (torso)
                 glPushMatrix()
                 glScalef(0.5, 1.0, 0.35)
                 self._draw_cube()
@@ -1199,6 +1210,36 @@ class Renderer3DQt:
                 quad = gluNewQuadric()
                 gluSphere(quad, 0.35, 12, 12)
                 gluDeleteQuadric(quad)
+                glPopMatrix()
+                
+                # Arms
+                # Left arm
+                glPushMatrix()
+                glTranslatef(-0.4, 0.2, 0)
+                glScalef(0.12, 0.6, 0.12)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Right arm
+                glPushMatrix()
+                glTranslatef(0.4, 0.2, 0)
+                glScalef(0.12, 0.6, 0.12)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Legs
+                # Left leg
+                glPushMatrix()
+                glTranslatef(-0.15, -0.7, 0)
+                glScalef(0.15, 0.7, 0.15)
+                self._draw_cube()
+                glPopMatrix()
+                
+                # Right leg
+                glPushMatrix()
+                glTranslatef(0.15, -0.7, 0)
+                glScalef(0.15, 0.7, 0.15)
+                self._draw_cube()
                 glPopMatrix()
             
             glPopMatrix()

@@ -1,17 +1,34 @@
 """
-SimCity-Style Heat Map System
+SimCity-Style Heat Map System - FIXED IMPORTS VERSION
 Interactive data layer visualization for park analysis
 """
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 from enum import Enum
+import sys
+import os
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 try:
-    from ..environment.park import Park, Position
-    from ..config import ElementType, park_config
-except ImportError:
-    pass
+    from environment.park import Park, Position
+    from config import ElementType, park_config
+except ImportError as e:
+    print(f"Warning: Import error in heatmap_system: {e}")
+    # Minimal stubs for standalone use
+    class Park: pass
+    class Position: 
+        def __init__(self, x, y, z=0):
+            self.x, self.y, self.z = x, y, z
+    class ElementType:
+        BENCH = "bench"
+        TREE = "tree"
+        FOUNTAIN = "fountain"
+        STREET_LAMP = "lamp"
+    class park_config:
+        comfortable_temp_range = (18.0, 26.0)
 
 
 class HeatMapType(Enum):
@@ -266,7 +283,7 @@ class HeatMapGenerator:
         value = np.clip(value, 0, 1)
         
         if heatmap_type == HeatMapType.THERMAL_COMFORT:
-            # Blue (cold/uncomfortable) -> Green (comfortable) -> Red (hot/uncomfortable)
+            # Blue (cold/uncomfortable) → Green (comfortable) → Red (hot/uncomfortable)
             if value > 0.5:
                 # Comfortable to good
                 r = 0.2 + (value - 0.5) * 1.0
@@ -280,35 +297,35 @@ class HeatMapGenerator:
             alpha = 0.6
             
         elif heatmap_type == HeatMapType.SHADE_COVERAGE:
-            # Yellow (no shade) -> Green (full shade)
+            # Yellow (no shade) → Green (full shade)
             r = 1.0 - value * 0.5
             g = 0.5 + value * 0.5
             b = 0.2
             alpha = 0.5
             
         elif heatmap_type == HeatMapType.LIGHT_COVERAGE:
-            # Dark blue (no light) -> Bright yellow (well lit)
+            # Dark blue (no light) → Bright yellow (well lit)
             r = value * 1.0
             g = value * 0.9
             b = 0.3 + value * 0.2
             alpha = 0.5
             
         elif heatmap_type == HeatMapType.PEDESTRIAN_DENSITY:
-            # Blue (empty) -> Red (crowded)
+            # Blue (empty) → Red (crowded)
             r = value * 1.0
             g = 0.3 * (1 - value)
             b = (1 - value) * 0.8
             alpha = 0.4 + value * 0.3
             
         elif heatmap_type == HeatMapType.ACCESSIBILITY:
-            # Red (far from amenities) -> Green (close to amenities)
+            # Red (far from amenities) → Green (close to amenities)
             r = 1.0 - value
             g = value
             b = 0.2
             alpha = 0.5
             
         elif heatmap_type == HeatMapType.EFFECTIVE_TEMPERATURE:
-            # Blue (cool) -> Yellow (warm) -> Red (hot)
+            # Blue (cool) → Yellow (warm) → Red (hot)
             if value < 0.5:
                 # Cool to moderate
                 r = value * 0.4
@@ -322,7 +339,7 @@ class HeatMapGenerator:
             alpha = 0.6
             
         elif heatmap_type == HeatMapType.OVERALL_QUALITY:
-            # Red (poor) -> Yellow (okay) -> Green (excellent)
+            # Red (poor) → Yellow (okay) → Green (excellent)
             if value < 0.5:
                 r = 1.0
                 g = value * 2.0

@@ -1,13 +1,30 @@
 """
-Heat Map Rendering Extension for Renderer3D
+Heat Map Rendering Extension for Renderer3D - FIXED IMPORTS VERSION
 Add this to your renderer3d.py file
 """
 
-from OpenGL.GL import *
+# Import numpy at module level (safe)
 import numpy as np
 import sys
-sys.path.insert(0, '/home/claude')
-from heatmap_system import HeatMapGenerator, HeatMapType
+import os
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from sim_city_features.heatmap_system import HeatMapGenerator, HeatMapType
+    from config import ElementType
+except ImportError as e:
+    print(f"Warning: Import error in heatmap_renderer: {e}")
+    # Minimal stubs
+    class HeatMapType:
+        NONE = "none"
+    class HeatMapGenerator: pass
+    class ElementType:
+        BENCH = "bench"
+        TREE = "tree"
+        FOUNTAIN = "fountain"
+        STREET_LAMP = "lamp"
 
 
 class HeatMapRenderer:
@@ -33,6 +50,13 @@ class HeatMapRenderer:
         if self.current_type == HeatMapType.NONE:
             return
         
+        # Import OpenGL only when rendering (lazy import)
+        try:
+            from OpenGL import GL
+        except ImportError:
+            print("Warning: OpenGL not available, skipping heat map rendering")
+            return
+        
         # Generate heat map data
         heatmap_data = self.generator.generate(self.current_type, agent_manager)
         
@@ -40,13 +64,13 @@ class HeatMapRenderer:
             return
         
         # Render heat map as colored quads
-        self._render_heatmap_overlay(heatmap_data)
+        self._render_heatmap_overlay(heatmap_data, GL)
         
-    def _render_heatmap_overlay(self, heatmap_data: np.ndarray):
+    def _render_heatmap_overlay(self, heatmap_data: np.ndarray, GL):
         """Render heat map as ground overlay"""
-        glDisable(GL_LIGHTING)
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        GL.glDisable(GL.GL_LIGHTING)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
         
         resolution = heatmap_data.shape[0]
         half_size = self.park.size / 2
@@ -64,15 +88,15 @@ class HeatMapRenderer:
                 y = (i / resolution) * self.park.size - half_size
                 
                 # Draw colored quad
-                glColor4f(r, g, b, a)
-                glBegin(GL_QUADS)
-                glVertex3f(x, 0.02, y)
-                glVertex3f(x + cell_size, 0.02, y)
-                glVertex3f(x + cell_size, 0.02, y + cell_size)
-                glVertex3f(x, 0.02, y + cell_size)
-                glEnd()
+                GL.glColor4f(r, g, b, a)
+                GL.glBegin(GL.GL_QUADS)
+                GL.glVertex3f(x, 0.02, y)
+                GL.glVertex3f(x + cell_size, 0.02, y)
+                GL.glVertex3f(x + cell_size, 0.02, y + cell_size)
+                GL.glVertex3f(x, 0.02, y + cell_size)
+                GL.glEnd()
         
-        glEnable(GL_LIGHTING)
+        GL.glEnable(GL.GL_LIGHTING)
     
     def clear_cache(self):
         """Clear heat map cache when park changes"""
@@ -107,12 +131,17 @@ class InfluenceRadiusRenderer:
         if not self.show_all and self.highlight_element is None:
             return
         
-        glDisable(GL_LIGHTING)
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glLineWidth(2.0)
+        # Import OpenGL only when rendering
+        try:
+            from OpenGL import GL
+        except ImportError:
+            print("Warning: OpenGL not available, skipping influence radius rendering")
+            return
         
-        from config import ElementType
+        GL.glDisable(GL.GL_LIGHTING)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        GL.glLineWidth(2.0)
         
         for element in self.park.elements:
             # Skip if type filter is active and doesn't match
@@ -149,33 +178,33 @@ class InfluenceRadiusRenderer:
                 border_color = (1.0, 1.0, 1.0, 0.8)
             
             # Draw filled circle
-            self._draw_circle_filled(element.position.x, element.position.y, radius, color, 32)
+            self._draw_circle_filled(element.position.x, element.position.y, radius, color, 32, GL)
             
             # Draw border
-            self._draw_circle_border(element.position.x, element.position.y, radius, border_color, 32)
+            self._draw_circle_border(element.position.x, element.position.y, radius, border_color, 32, GL)
         
-        glLineWidth(1.0)
-        glEnable(GL_LIGHTING)
+        GL.glLineWidth(1.0)
+        GL.glEnable(GL.GL_LIGHTING)
     
-    def _draw_circle_filled(self, x, z, radius, color, segments=32):
+    def _draw_circle_filled(self, x, z, radius, color, segments, GL):
         """Draw a filled circle on the ground"""
-        glColor4f(*color)
-        glBegin(GL_TRIANGLE_FAN)
-        glVertex3f(x, 0.01, z)
+        GL.glColor4f(*color)
+        GL.glBegin(GL.GL_TRIANGLE_FAN)
+        GL.glVertex3f(x, 0.01, z)
         for i in range(segments + 1):
             angle = (i / segments) * 2 * 3.14159
             cx = x + np.cos(angle) * radius
             cz = z + np.sin(angle) * radius
-            glVertex3f(cx, 0.01, cz)
-        glEnd()
+            GL.glVertex3f(cx, 0.01, cz)
+        GL.glEnd()
     
-    def _draw_circle_border(self, x, z, radius, color, segments=32):
+    def _draw_circle_border(self, x, z, radius, color, segments, GL):
         """Draw a circle border on the ground"""
-        glColor4f(*color)
-        glBegin(GL_LINE_LOOP)
+        GL.glColor4f(*color)
+        GL.glBegin(GL.GL_LINE_LOOP)
         for i in range(segments):
             angle = (i / segments) * 2 * 3.14159
             cx = x + np.cos(angle) * radius
             cz = z + np.sin(angle) * radius
-            glVertex3f(cx, 0.01, cz)
-        glEnd()
+            GL.glVertex3f(cx, 0.01, cz)
+        GL.glEnd()

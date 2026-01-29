@@ -1,6 +1,7 @@
 """
 Professional 3D Urban Park RL Application with Dynamic Grid Sizing AND TEMPERATURE CONTROL
 Qt-based UI with embedded OpenGL rendering - ENHANCED VERSION WITH TEMPERATURE
+INCLUDES: SimCity-style Heat Maps, Influence Radii, and Flow Fields
 """
 
 import sys
@@ -32,6 +33,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from visualization.renderer3d import Renderer3DQt
 from visualization.ui_qt import ProfessionalQtUI
 
+# ========== SIMCITY FEATURES IMPORTS ==========
+from sim_city_features.heatmap_system import HeatMapType
+from sim_city_features.heatmap_renderer import HeatMapRenderer, InfluenceRadiusRenderer
+from sim_city_features.flow_field_system import calculate_complete_flow_field, follow_flow_field
+
 
 class OpenGLWidget(QGLWidget):
     """OpenGL widget that can be embedded in Qt"""
@@ -59,6 +65,15 @@ class OpenGLWidget(QGLWidget):
         """Paint the scene"""
         if self.renderer:
             self.renderer.render(agent_manager=self.app.agent_manager)
+            
+            # ========== SIMCITY FEATURES RENDERING ==========
+            # Render heat maps
+            if hasattr(self.app, 'heatmap_renderer'):
+                self.app.heatmap_renderer.render(self.app.agent_manager)
+            
+            # Render influence radii
+            if hasattr(self.app, 'influence_renderer'):
+                self.app.influence_renderer.render()
     
     def mousePressEvent(self, event):
         """Handle mouse press"""
@@ -125,6 +140,19 @@ class UrbanParkRL3D:
         self.training_active = False
         self.training_episodes_remaining = 0
         self._total_training_episodes = 0
+        
+        # ========== SIMCITY FEATURES INITIALIZATION ==========
+        print("Initializing SimCity features...")
+        self.heatmap_renderer = HeatMapRenderer(self.park)
+        self.influence_renderer = InfluenceRadiusRenderer(self.park)
+        self.flow_field = None
+        self.use_flow_field = False
+        
+        print("✨ SimCity features initialized!")
+        print("  Press H to cycle heat maps")
+        print("  Press I to toggle influence radii")
+        print("  Press F to toggle flow field movement")
+        print("  Press 1, 2, 3 for quick heat map access")
         
         # Remove any pathways or grass patches that might exist
         self.remove_disabled_elements()
@@ -206,6 +234,10 @@ class UrbanParkRL3D:
         for _ in range(current_agent_count):
             self.agent_manager.spawn_agent()
         
+        # ========== CLEAR SIMCITY CACHES ==========
+        if hasattr(self, 'heatmap_renderer'):
+            self.heatmap_renderer.clear_cache()
+        
         print(f"✓ Grid size changed successfully!")
         print(f"  Grid: {new_grid_size}×{new_grid_size}")
         print(f"  Park size: {park_size}×{park_size} meters (SAME)")
@@ -237,7 +269,7 @@ class UrbanParkRL3D:
             'light_coverage': self.coverage_calc.calculate_light_coverage(),
             'distribution': self.distribution_calc.calculate_distribution_score(),
             'total_score': self.trainer.calculate_reward(),
-            'temperature': self.park.get_temperature()  # NEW: Include temperature
+            'temperature': self.park.get_temperature()
         }
     
     def start_training(self, episodes: int):
@@ -256,12 +288,18 @@ class UrbanParkRL3D:
     def clear_park(self):
         """Clear park"""
         self.park.clear()
+        # ========== CLEAR SIMCITY CACHES ==========
+        if hasattr(self, 'heatmap_renderer'):
+            self.heatmap_renderer.clear_cache()
         print("Park cleared")
     
     def apply_best_design(self):
         """Apply best design"""
         if self.rl_agent.best_design:
             self.park.from_dict(self.rl_agent.best_design)
+            # ========== CLEAR SIMCITY CACHES ==========
+            if hasattr(self, 'heatmap_renderer'):
+                self.heatmap_renderer.clear_cache()
             print(f"Applied best design (reward: {self.rl_agent.best_reward:.2f})")
         else:
             print("No best design available")
@@ -284,6 +322,10 @@ class UrbanParkRL3D:
             available.remove((x, y))
             self.park.add_element(random.choice(element_types), x, y)
         
+        # ========== CLEAR SIMCITY CACHES ==========
+        if hasattr(self, 'heatmap_renderer'):
+            self.heatmap_renderer.clear_cache()
+        
         print(f"Random design generated: {num_elements} elements")
 
 
@@ -293,7 +335,7 @@ class MainWindow(QWidget):
     def __init__(self, app):
         super().__init__()
         self.app = app
-        self.setWindowTitle("Urban Park RL - 3D Professional with Temperature")
+        self.setWindowTitle("Urban Park RL - 3D Professional with Temperature & SimCity Features")
         self.setGeometry(100, 100, 1600, 900)
         
         # Create layout
@@ -336,6 +378,95 @@ class MainWindow(QWidget):
         self.ui_timer = QTimer()
         self.ui_timer.timeout.connect(self._update_ui)
         self.ui_timer.start(100)  # Update UI every 100ms
+    
+    # ========== SIMCITY KEYBOARD CONTROLS ==========
+    def keyPressEvent(self, event):
+        """Handle keyboard input for SimCity features"""
+        key = event.text().lower()
+        
+        if key == 'h':
+            # Cycle through heat maps
+            self._cycle_heatmap()
+        
+        elif key == 'i':
+            # Toggle influence radii
+            if hasattr(self.app, 'influence_renderer'):
+                self.app.influence_renderer.toggle_all()
+                self.gl_widget.update()
+        
+        elif key == 'f':
+            # Toggle flow field
+            self._toggle_flow_field()
+        
+        elif key == '1':
+            # Quick: Thermal Comfort
+            if hasattr(self.app, 'heatmap_renderer'):
+                self.app.heatmap_renderer.set_heatmap_type(HeatMapType.THERMAL_COMFORT)
+                self.gl_widget.update()
+        
+        elif key == '2':
+            # Quick: Pedestrian Density
+            if hasattr(self.app, 'heatmap_renderer'):
+                self.app.heatmap_renderer.set_heatmap_type(HeatMapType.PEDESTRIAN_DENSITY)
+                self.gl_widget.update()
+        
+        elif key == '3':
+            # Quick: Overall Quality
+            if hasattr(self.app, 'heatmap_renderer'):
+                self.app.heatmap_renderer.set_heatmap_type(HeatMapType.OVERALL_QUALITY)
+                self.gl_widget.update()
+    
+    def _cycle_heatmap(self):
+        """Cycle through available heat maps"""
+        if not hasattr(self.app, 'heatmap_renderer'):
+            return
+        
+        heatmap_types = [
+            HeatMapType.NONE,
+            HeatMapType.THERMAL_COMFORT,
+            HeatMapType.SHADE_COVERAGE,
+            HeatMapType.LIGHT_COVERAGE,
+            HeatMapType.PEDESTRIAN_DENSITY,
+            HeatMapType.ACCESSIBILITY,
+            HeatMapType.EFFECTIVE_TEMPERATURE,
+            HeatMapType.OVERALL_QUALITY
+        ]
+        
+        current = self.app.heatmap_renderer.current_type
+        try:
+            current_idx = heatmap_types.index(current)
+        except ValueError:
+            current_idx = 0
+        
+        next_idx = (current_idx + 1) % len(heatmap_types)
+        self.app.heatmap_renderer.set_heatmap_type(heatmap_types[next_idx])
+        self.gl_widget.update()
+    
+    def _toggle_flow_field(self):
+        """Toggle flow field movement for agents"""
+        if not hasattr(self.app, 'use_flow_field'):
+            self.app.use_flow_field = False
+        
+        self.app.use_flow_field = not self.app.use_flow_field
+        
+        if self.app.use_flow_field:
+            # Recompute flow field
+            benches = self.app.park.get_elements_by_type(ElementType.BENCH)
+            if benches:
+                self.app.flow_field = calculate_complete_flow_field(
+                    self.app.park, 
+                    benches, 
+                    resolution=20
+                )
+                print("🌊 Flow Field: ON (agents follow natural paths)")
+            else:
+                print("⚠️  No benches for flow field targets")
+                self.app.use_flow_field = False
+        else:
+            self.app.flow_field = None
+            print("🌊 Flow Field: OFF (agents use default movement)")
+    
+    # ========== REST OF THE METHODS (unchanged) ==========
     
     def _create_left_panel(self):
         """Create left control panel"""
@@ -403,7 +534,7 @@ class MainWindow(QWidget):
         self.grid_size_info.setStyleSheet("color: #A0A5B4; font-size: 12px;")
         layout.addWidget(self.grid_size_info)
         
-        # ========== NEW: TEMPERATURE CONTROL ==========
+        # ========== TEMPERATURE CONTROL ==========
         layout.addSpacing(10)
         line_temp = QFrame()
         line_temp.setFrameShape(QFrame.HLine)
@@ -415,8 +546,8 @@ class MainWindow(QWidget):
         layout.addWidget(temp_label)
         
         self.temp_slider = QSlider(Qt.Horizontal)
-        self.temp_slider.setMinimum(5)   # 5°C (cold)
-        self.temp_slider.setMaximum(42)  # 42°C (extreme heat)
+        self.temp_slider.setMinimum(5)
+        self.temp_slider.setMaximum(42)
         self.temp_slider.setValue(int(self.app.park.get_temperature()))
         self.temp_slider.valueChanged.connect(self._on_temp_slider_changed)
         layout.addWidget(self.temp_slider)
@@ -424,7 +555,6 @@ class MainWindow(QWidget):
         self.temp_value_label = QLabel(f"Current: {self.temp_slider.value()}°C (Comfortable)")
         self.temp_value_label.setStyleSheet("color: #A0A5B4; font-size: 13px;")
         layout.addWidget(self.temp_value_label)
-        # ========== END TEMPERATURE CONTROL ==========
         
         # Separator
         layout.addSpacing(10)
@@ -476,29 +606,23 @@ class MainWindow(QWidget):
     
     def _on_time_slider_changed(self, value):
         """Handle time slider change"""
-        # Convert slider value (0-240) to hours (0-24)
         hour = value / 10.0
         
-        # Update renderer time
         if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
             self.gl_widget.renderer.set_time(hour)
         
-        # Update display
         self._update_time_display()
 
     def _on_speed_button_clicked(self, speed):
         """Handle speed button click"""
         if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
             if speed == 0:
-                # Pause
                 self.gl_widget.renderer.pause_time()
                 self.speed_display.setText("Speed: PAUSED")
             else:
-                # Resume with new speed
                 self.gl_widget.renderer.resume_time()
                 self.gl_widget.renderer.set_time_speed(speed)
                 
-                # Calculate real-time equivalent
                 if speed == 1:
                     self.speed_display.setText("Speed: Real-time")
                 else:
@@ -509,7 +633,6 @@ class MainWindow(QWidget):
                     else:
                         self.speed_display.setText(f"Speed: {speed}x ({seconds_per_hour:.1f} sec/hour)")
         
-        # Highlight active button
         for btn, btn_speed in self.speed_buttons:
             if btn_speed == speed:
                 btn.setStyleSheet("""
@@ -544,7 +667,6 @@ class MainWindow(QWidget):
         """Set time to a preset value"""
         if hasattr(self.gl_widget, 'renderer') and self.gl_widget.renderer:
             self.gl_widget.renderer.set_time(hour)
-            # Update slider
             self.time_slider.setValue(int(hour * 10))
             self._update_time_display()
 
@@ -555,11 +677,9 @@ class MainWindow(QWidget):
         
         stats = self.gl_widget.renderer.get_time_stats()
         
-        # Format time string
         time_str = stats['formatted_time']
         time_of_day = stats['time_of_day']
         
-        # Get emoji for time of day
         emoji_map = {
             'Night': '🌙',
             'Pre-Dawn': '🌌',
@@ -574,7 +694,6 @@ class MainWindow(QWidget):
         
         self.time_display.setText(f"{emoji} Time: {time_str} - {time_of_day}")
         
-        # Update sun info
         alt = stats['sun_altitude']
         az = stats['sun_azimuth']
         intensity = stats['sun_intensity']
@@ -586,7 +705,6 @@ class MainWindow(QWidget):
             self.sun_info.setText(f"🌙 Sun: Below Horizon ({alt:.1f}°)")
             self.sun_info.setStyleSheet("color: #6B7280; font-size: 12px;")
         
-        # Update lamp info
         if stats['lamps_on']:
             self.lighting_info.setText("💡 Street Lamps: ON")
             self.lighting_info.setStyleSheet("color: #FFE66D; font-size: 12px;")
@@ -606,7 +724,6 @@ class MainWindow(QWidget):
         layout.setSpacing(15)
         layout.setContentsMargins(20, 30, 20, 20)
         
-        # ========== TIME DISPLAY ==========
         self.time_display = QLabel("Time: 14:00 - Afternoon")
         self.time_display.setStyleSheet("""
             color: #FFE66D;
@@ -618,15 +735,14 @@ class MainWindow(QWidget):
         """)
         layout.addWidget(self.time_display)
         
-        # ========== TIME SLIDER ==========
         time_label = QLabel("Time of Day")
         time_label.setStyleSheet("color: #FFE66D; font-size: 14px; font-weight: bold;")
         layout.addWidget(time_label)
         
         self.time_slider = QSlider(Qt.Horizontal)
         self.time_slider.setMinimum(0)
-        self.time_slider.setMaximum(240)  # 24 hours * 10 for precision
-        self.time_slider.setValue(140)  # Start at 14:00 (2 PM)
+        self.time_slider.setMaximum(240)
+        self.time_slider.setValue(140)
         self.time_slider.valueChanged.connect(self._on_time_slider_changed)
         self.time_slider.setStyleSheet("""
             QSlider::groove:horizontal {
@@ -654,12 +770,10 @@ class MainWindow(QWidget):
         """)
         layout.addWidget(self.time_slider)
         
-        # Time markers
         time_markers = QLabel("🌙 00:00     🌅 06:00     ☀️ 12:00     🌆 18:00     🌙 24:00")
         time_markers.setStyleSheet("color: #A0A5B4; font-size: 10px;")
         layout.addWidget(time_markers)
         
-        # ========== TIME SPEED CONTROL ==========
         layout.addSpacing(10)
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
@@ -670,7 +784,6 @@ class MainWindow(QWidget):
         speed_label.setStyleSheet("color: #96D4FF; font-size: 14px; font-weight: bold;")
         layout.addWidget(speed_label)
         
-        # Speed preset buttons
         speed_buttons_layout = QHBoxLayout()
         speed_buttons_layout.setSpacing(10)
         
@@ -716,7 +829,6 @@ class MainWindow(QWidget):
         self.speed_display.setStyleSheet("color: #A0A5B4; font-size: 12px;")
         layout.addWidget(self.speed_display)
         
-        # ========== QUICK TIME PRESETS ==========
         layout.addSpacing(10)
         separator2 = QFrame()
         separator2.setFrameShape(QFrame.HLine)
@@ -761,7 +873,6 @@ class MainWindow(QWidget):
         
         layout.addLayout(presets_layout)
         
-        # ========== SUN INFO ==========
         layout.addSpacing(10)
         separator3 = QFrame()
         separator3.setFrameShape(QFrame.HLine)
@@ -851,7 +962,6 @@ class MainWindow(QWidget):
         metrics_layout.setSpacing(5)
         metrics_layout.setContentsMargins(20, 30, 20, 20)
         
-        # ========== NEW: TEMPERATURE DISPLAY ==========
         self.temp_display = QLabel("Temperature: 25.0°C")
         self.temp_display.setStyleSheet("color: #96FF96; font-size: 14px; font-weight: bold;")
         metrics_layout.addWidget(self.temp_display)
@@ -860,7 +970,6 @@ class MainWindow(QWidget):
         line_temp.setFrameShape(QFrame.HLine)
         line_temp.setStyleSheet("background-color: #506680;")
         metrics_layout.addWidget(line_temp)
-        # ========== END TEMPERATURE DISPLAY ==========
         
         self.comfort_metric = MetricDisplay("Comfort")
         metrics_layout.addWidget(self.comfort_metric)
@@ -915,11 +1024,9 @@ class MainWindow(QWidget):
         layout.setSpacing(20)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Add design panel
         design_panel = self._create_left_panel()
         layout.addWidget(design_panel)
         
-        # Add time control panel
         time_panel = self._create_time_control_panel()
         layout.addWidget(time_panel)
         
@@ -928,24 +1035,23 @@ class MainWindow(QWidget):
         container.setLayout(layout)
         return container
     
-    # ========== NEW: TEMPERATURE SLIDER HANDLER ==========
     def _on_temp_slider_changed(self, value):
         """Handle temperature slider change"""
         from config import get_temperature_description, get_temperature_color
         
-        # Update temperature in park
         self.app.park.set_temperature(float(value))
         
-        # Get description
         description = get_temperature_description(float(value))
         
-        # Update label with color
         color = get_temperature_color(float(value))
         color_hex = f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
         
         self.temp_value_label.setText(f"Current: {value}°C ({description})")
         self.temp_value_label.setStyleSheet(f"color: {color_hex}; font-size: 13px; font-weight: bold;")
-    # ========== END TEMPERATURE SLIDER HANDLER ==========
+        
+        # Clear heat map cache when temperature changes
+        if hasattr(self.app, 'heatmap_renderer'):
+            self.app.heatmap_renderer.clear_cache()
     
     def _on_agent_slider_changed(self, value):
         """Handle agent slider change"""
@@ -967,7 +1073,6 @@ class MainWindow(QWidget):
     
     def _update_ui(self):
         """Update UI elements"""
-        # ========== NEW: UPDATE TEMPERATURE DISPLAY ==========
         from config import get_temperature_description, get_temperature_color
         temp = self.app.park.get_temperature()
         temp_desc = get_temperature_description(temp)
@@ -976,16 +1081,13 @@ class MainWindow(QWidget):
         
         self.temp_display.setText(f"Temperature: {temp:.1f}°C ({temp_desc})")
         self.temp_display.setStyleSheet(f"color: {color_hex}; font-size: 14px; font-weight: bold;")
-        # ========== END TEMPERATURE DISPLAY UPDATE ==========
         
-        # Update stats
         num_elements = len(self.app.park.elements)
         occupancy = self.app.park.get_occupancy_rate()
         
         self.stat_elements.setText(f"Elements: {num_elements}")
         self.stat_occupancy.setText(f"Occupancy: {occupancy*100:.1f}%")
         
-        # Update metrics
         try:
             metrics = self.app.get_metrics()
             self.comfort_metric.set_value(metrics['comfort'])
@@ -995,7 +1097,6 @@ class MainWindow(QWidget):
         except:
             pass
         
-        # Update training status
         if self.app.training_active:
             self.training_status.setText("Status: Training...")
             self.training_status.setStyleSheet("color: #96FFB4; font-size: 13px;")
@@ -1016,6 +1117,18 @@ def main():
     
     window = MainWindow(app)
     window.show()
+    
+    print("\n" + "="*70)
+    print("  🎮 SIMCITY FEATURES ENABLED!")
+    print("="*70)
+    print("\n  Keyboard Controls:")
+    print("    H   - Cycle through heat maps")
+    print("    I   - Toggle influence radii (coverage circles)")
+    print("    F   - Toggle flow field movement")
+    print("    1   - Quick: Thermal Comfort heat map")
+    print("    2   - Quick: Pedestrian Density heat map")
+    print("    3   - Quick: Overall Quality heat map")
+    print("\n" + "="*70 + "\n")
     
     sys.exit(qt_app.exec_())
 

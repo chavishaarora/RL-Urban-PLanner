@@ -1,5 +1,5 @@
 """
-Flow Field Movement System Enhancement
+Flow Field Movement System Enhancement - FIXED IMPORTS VERSION
 Add this to your agents/movement.py or use as standalone
 
 This implements SimCity-style crowd pathfinding where all agents follow
@@ -8,7 +8,11 @@ a pre-computed flow field instead of doing individual pathfinding.
 
 import numpy as np
 from typing import List, Tuple
-from dataclasses import dataclass
+import sys
+import os
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
 def calculate_complete_flow_field(park, targets: List, resolution: int = 20) -> np.ndarray:
@@ -47,8 +51,8 @@ def _calculate_cost_field(park, targets: List, resolution: int) -> np.ndarray:
     
     # Initialize target cells with zero cost
     for target in targets:
-        grid_x = int((target.x + park_size/2) / park_size * resolution)
-        grid_y = int((target.y + park_size/2) / park_size * resolution)
+        grid_x = int((target.position.x + park_size/2) / park_size * resolution)
+        grid_y = int((target.position.y + park_size/2) / park_size * resolution)
         
         # Clamp to valid range
         grid_x = max(0, min(resolution - 1, grid_x))
@@ -191,7 +195,14 @@ def follow_flow_field(current_pos, flow_field: np.ndarray, park,
     new_y = current_pos.y + direction[1] * move_distance
     
     # Return new position (create Position object)
-    from agents.pedestrian import Position
+    try:
+        from agents.pedestrian import Position
+    except ImportError:
+        # Fallback: create simple position class
+        class Position:
+            def __init__(self, x, y, z):
+                self.x, self.y, self.z = x, y, z
+    
     return Position(new_x, new_y, current_pos.z)
 
 
@@ -205,7 +216,7 @@ HOW TO USE FLOW FIELDS IN YOUR CODE:
 1. In your agent manager or simulation loop:
 
    # Calculate flow field once (when targets change)
-   from environment.park import ElementType
+   from config import ElementType
    
    benches = park.get_elements_by_type(ElementType.BENCH)
    flow_field = calculate_complete_flow_field(park, benches, resolution=20)

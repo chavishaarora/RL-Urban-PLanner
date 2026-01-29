@@ -993,6 +993,65 @@ class MainWindow(QWidget):
         metrics_panel.setFixedWidth(340)
         main_layout.addWidget(metrics_panel)
         
+        # ========== NEW: AGE DEMOGRAPHICS LEGEND ==========
+        age_panel = StyledGroupBox("👥 Age Demographics")
+        age_layout = QVBoxLayout()
+        age_layout.setSpacing(8)
+        age_layout.setContentsMargins(20, 30, 20, 20)
+        
+        # Legend title
+        legend_title = QLabel("Agent Color Legend:")
+        legend_title.setStyleSheet("color: #96D4FF; font-size: 13px; font-weight: bold;")
+        age_layout.addWidget(legend_title)
+        
+        # Age group color indicators
+        from config import AgentAgeGroup, agent_config
+        
+        age_group_info = [
+            (AgentAgeGroup.CHILD.value, "Children (0-17)", "👶"),
+            (AgentAgeGroup.YOUNG_ADULT.value, "Young Adults (18-34)", "🧑"),
+            (AgentAgeGroup.ADULT.value, "Adults (35-54)", "👨"),
+            (AgentAgeGroup.SENIOR.value, "Seniors (55+)", "👴")
+        ]
+        
+        self.age_group_labels = {}
+        
+        for age_key, age_name, emoji in age_group_info:
+            color_rgb = agent_config.age_group_colors.get(age_key, (0.5, 0.5, 0.5))
+            color_hex = f"#{int(color_rgb[0]*255):02x}{int(color_rgb[1]*255):02x}{int(color_rgb[2]*255):02x}"
+            
+            age_label = QLabel(f"{emoji} {age_name}: 0%")
+            age_label.setStyleSheet(f"color: {color_hex}; font-size: 12px; font-weight: bold;")
+            age_layout.addWidget(age_label)
+            self.age_group_labels[age_key] = age_label
+        
+        line_age = QFrame()
+        line_age.setFrameShape(QFrame.HLine)
+        line_age.setStyleSheet("background-color: #506680;")
+        age_layout.addWidget(line_age)
+        
+        # Path usage stats
+        path_title = QLabel("Path Usage:")
+        path_title.setStyleSheet("color: #96FFB4; font-size: 13px; font-weight: bold;")
+        age_layout.addWidget(path_title)
+        
+        self.path_only_label = QLabel("Path-Only: 0 (0%)")
+        self.path_only_label.setStyleSheet("color: #4D9FFF; font-size: 11px;")
+        age_layout.addWidget(self.path_only_label)
+        
+        self.free_roam_label = QLabel("Free-Roam: 0 (0%)")
+        self.free_roam_label.setStyleSheet("color: #96FF96; font-size: 11px;")
+        age_layout.addWidget(self.free_roam_label)
+        
+        self.on_path_now_label = QLabel("Currently on Path: 0")
+        self.on_path_now_label.setStyleSheet("color: #DCE1EB; font-size: 11px;")
+        age_layout.addWidget(self.on_path_now_label)
+        
+        age_panel.setLayout(age_layout)
+        age_panel.setFixedWidth(340)
+        main_layout.addWidget(age_panel)
+        # ========== END AGE DEMOGRAPHICS LEGEND ==========
+        
         main_layout.addStretch()
         
         widget.setLayout(main_layout)
@@ -1087,6 +1146,45 @@ class MainWindow(QWidget):
         
         self.stat_elements.setText(f"Elements: {num_elements}")
         self.stat_occupancy.setText(f"Occupancy: {occupancy*100:.1f}%")
+        
+        # ========== NEW: UPDATE AGE DEMOGRAPHICS ==========
+        age_stats = self.app.agent_manager.get_age_distribution_statistics()
+        for age_key, label in self.age_group_labels.items():
+            percentage = age_stats['percentages'].get(age_key, 0)
+            count = age_stats['counts'].get(age_key, 0)
+            
+            # Get emoji
+            emoji_map = {
+                '0-17': '👶',
+                '18-34': '🧑',
+                '35-54': '👨',
+                '55+': '👴'
+            }
+            emoji = emoji_map.get(age_key, '👤')
+            
+            # Get name
+            name_map = {
+                '0-17': 'Children (0-17)',
+                '18-34': 'Young Adults (18-34)',
+                '35-54': 'Adults (35-54)',
+                '55+': 'Seniors (55+)'
+            }
+            name = name_map.get(age_key, age_key)
+            
+            label.setText(f"{emoji} {name}: {count} ({percentage:.1f}%)")
+        
+        # Update path usage stats
+        path_stats = self.app.agent_manager.get_path_usage_statistics()
+        self.path_only_label.setText(
+            f"Path-Only: {path_stats['path_only_agents']} ({path_stats['path_only_percentage']:.1f}%)"
+        )
+        self.free_roam_label.setText(
+            f"Free-Roam: {path_stats['free_roam_agents']} ({100-path_stats['path_only_percentage']:.1f}%)"
+        )
+        self.on_path_now_label.setText(
+            f"Currently on Path: {path_stats['agents_currently_on_path']}"
+        )
+        # ========== END AGE DEMOGRAPHICS UPDATE ==========
         
         try:
             metrics = self.app.get_metrics()

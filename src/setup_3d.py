@@ -38,7 +38,7 @@ def main():
         ("numpy", "numpy"),
         ("pygame", "pygame"),
         ("scipy", "scipy"),
-        ("PyOpenGL", "OpenGL"),
+        ("PyOpenGL", "OpenGL"), // sorted (OpenGL comes before PyOpenGL)
         ("PyOpenGL_accelerate", "OpenGL_accelerate")
     ]
     

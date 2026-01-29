@@ -6,6 +6,8 @@ Agents adjust behavior based on temperature AND can sit on benches:
 - Rest longer in extreme temperatures
 - Prefer cooling fountains when hot
 - Sit on benches when resting nearby
+- Age-based demographics with color coding
+- Path constraints for realistic movement
 """
 
 import random
@@ -48,17 +50,35 @@ class Position:
 class PedestrianAgent:
     """Temperature-aware pedestrian agent with intelligent behavior including sitting on benches"""
     
-    def __init__(self, park, position: Position):
+    def __init__(self, park, position: Position, age_group: str = None, constrained_to_path: bool = False):
         self.park = park
         self.position = position
         self.last_position = position.copy()
         self.target = None
         self.state = AgentState.WANDERING
-        self.speed = random.uniform(0.8, 1.8)
         
-        # Rest parameters (temperature-affected)
+        # Age demographics
+        self.age_group = age_group  # String from AgentAgeGroup enum
+        self.constrained_to_path = constrained_to_path  # True if agent must stay on paths
+        
+        # Speed adjusted by age
+        base_speed = random.uniform(0.8, 1.8)
+        if age_group:
+            from config import agent_config
+            speed_mult = agent_config.age_speed_multipliers.get(age_group, 1.0)
+            self.speed = base_speed * speed_mult
+        else:
+            self.speed = base_speed
+        
+        # Rest parameters (temperature-affected and age-adjusted)
         self.rest_timer = 0
-        self.base_rest_duration = random.uniform(1.5, 4.0)
+        base_rest = random.uniform(1.5, 4.0)
+        if age_group:
+            from config import agent_config
+            rest_mult = agent_config.age_rest_multipliers.get(age_group, 1.0)
+            self.base_rest_duration = base_rest * rest_mult
+        else:
+            self.base_rest_duration = base_rest
         self.rest_duration = self.base_rest_duration
         
         # Sitting parameters
@@ -600,6 +620,34 @@ class PedestrianAgent:
         self.sitting_timer = 0
         self.current_bench = None
     
+    def get_display_color(self) -> Tuple[float, float, float]:
+        """Get the agent's display color based on age group and state"""
+        from config import agent_config
+        
+        # Get base color from age group
+        if self.age_group:
+            base_color = agent_config.age_group_colors.get(
+                self.age_group,
+                (0.5, 0.5, 0.5)  # Gray fallback
+            )
+        else:
+            # Fallback: state-based coloring (old system)
+            if self.state == AgentState.RESTING or self.state == AgentState.SITTING_ON_BENCH:
+                base_color = (1.0, 0.6, 0.2)  # Orange
+            elif self.state == AgentState.MOVING_TO_TARGET:
+                base_color = (0.2, 0.9, 0.5)  # Green
+            else:
+                base_color = (0.4, 0.7, 1.0)  # Blue
+        
+        # Apply state modulation
+        state_name = self.state.value if hasattr(self.state, 'value') else str(self.state)
+        modulation = agent_config.state_color_modulation.get(state_name, 1.0)
+        
+        # Calculate final color
+        final_color = tuple(c * modulation for c in base_color)
+        
+        return final_color
+    
     def _rest(self, delta_time: float):
         """Rest at current location"""
         self.rest_timer += delta_time
@@ -671,28 +719,85 @@ class PedestrianAgent:
 
 
 class AgentManager:
-    """Temperature-aware Agent Manager"""
+    """Temperature-aware Agent Manager with Age Demographics and Path Constraints"""
     
-    def __init__(self, park, num_agents: int = 20):
+    def __init__(self, park, num_agents: int = 20, age_distribution: dict = None, path_only_ratio: float = 0.6):
         self.park = park
         self.agents: List[PedestrianAgent] = []
         self.max_spawn_attempts = 50
         
+        # Age distribution setup
+        from config import agent_config, AgentAgeGroup
+        if age_distribution is None:
+            age_distribution = agent_config.default_age_distribution
+        self.age_distribution = age_distribution
+        
+        # Path constraint ratio (60% on paths by default)
+        self.path_only_ratio = path_only_ratio
+        
+        # Agent type counts
+        self.path_agents = []
+        self.free_roam_agents = []
+        
+        # Spawn initial agents
         for _ in range(num_agents):
             self.spawn_agent()
+        
+        # Assign path constraints to existing agents
+        self._assign_path_constraints()
+    
+    def _assign_path_constraints(self):
+        """Assign path constraints to agents based on ratio"""
+        if not self.agents:
+            return
+        
+        # Calculate number of path-only agents
+        num_path_agents = int(len(self.agents) * self.path_only_ratio)
+        
+        # Shuffle to randomly assign
+        shuffled_agents = self.agents.copy()
+        random.shuffle(shuffled_agents)
+        
+        # Assign path constraints
+        self.path_agents = shuffled_agents[:num_path_agents]
+        self.free_roam_agents = shuffled_agents[num_path_agents:]
+        
+        # Mark agents
+        for agent in self.path_agents:
+            agent.constrained_to_path = True
+        
+        for agent in self.free_roam_agents:
+            agent.constrained_to_path = False
+        
+        print(f"Agent distribution: {num_path_agents} on paths, {len(self.free_roam_agents)} free-roaming")
+    
+    def _select_age_group(self) -> str:
+        """Randomly select an age group based on distribution"""
+        age_groups = list(self.age_distribution.keys())
+        probabilities = list(self.age_distribution.values())
+        
+        # Normalize probabilities if they don't sum to 1
+        total = sum(probabilities)
+        if total > 0:
+            probabilities = [p / total for p in probabilities]
+        
+        return random.choices(age_groups, weights=probabilities, k=1)[0]
     
     def spawn_agent(self) -> bool:
-        """Spawn a new agent in a valid position"""
+        """Spawn a new agent in a valid position with age demographics"""
+        # Select age group
+        age_group = self._select_age_group()
+        
         for attempt in range(self.max_spawn_attempts):
             pos = self._get_spawn_position()
             
             if self._is_spawn_position_valid(pos):
-                agent = PedestrianAgent(self.park, pos)
+                agent = PedestrianAgent(self.park, pos, age_group=age_group)
                 self.agents.append(agent)
                 return True
         
         safe_pos = self._get_emergency_spawn_position()
-        agent = PedestrianAgent(self.park, safe_pos)
+        agent = PedestrianAgent(self.park, safe_pos, age_group=age_group)
         self.agents.append(agent)
         return True
     
@@ -742,9 +847,78 @@ class AgentManager:
         return True
     
     def update(self, delta_time: float):
-        """Update all agents"""
+        """Update all agents with path constraint enforcement"""
         for agent in self.agents:
+            # Enforce path constraints for path-only agents
+            if agent.constrained_to_path and not agent.is_sitting:
+                self._constrain_to_path(agent)
+            
             agent.update(delta_time)
+    
+    def _constrain_to_path(self, agent: PedestrianAgent):
+        """Force agent to stay on or near paths"""
+        if self._is_on_path(agent.position):
+            return  # Already on path, all good
+        
+        # Find nearest path point
+        nearest_path, distance = self._find_nearest_path_point(agent.position)
+        
+        if nearest_path and distance > 1.5:  # Too far from path
+            # Gently nudge toward path
+            direction_x = (nearest_path.x - agent.position.x) / distance
+            direction_y = (nearest_path.y - agent.position.y) / distance
+            
+            # Move agent toward path
+            nudge_strength = 0.3
+            agent.position.x += direction_x * nudge_strength
+            agent.position.y += direction_y * nudge_strength
+    
+    def _is_on_path(self, position: Position) -> bool:
+        """Check if position is on a pathway"""
+        from config import ElementType
+        
+        pathways = self.park.get_elements_by_type(ElementType.PATHWAY)
+        
+        if not pathways:
+            return False  # No paths exist, can't be on one
+        
+        for pathway in pathways:
+            dist = math.sqrt(
+                (position.x - pathway.position.x) ** 2 +
+                (position.y - pathway.position.y) ** 2
+            )
+            
+            # Within path width (pathway size is diameter)
+            if dist < pathway.size / 2 + 0.5:  # Small buffer
+                return True
+        
+        return False
+    
+    def _find_nearest_path_point(self, position: Position) -> Tuple[Optional[Position], float]:
+        """Find closest point on any path"""
+        from config import ElementType
+        
+        pathways = self.park.get_elements_by_type(ElementType.PATHWAY)
+        
+        if not pathways:
+            return None, float('inf')
+        
+        nearest_point = None
+        min_distance = float('inf')
+        
+        for pathway in pathways:
+            # Simple approach: use pathway center as nearest point
+            # (Could be enhanced with actual path geometry)
+            dist = math.sqrt(
+                (position.x - pathway.position.x) ** 2 +
+                (position.y - pathway.position.y) ** 2
+            )
+            
+            if dist < min_distance:
+                min_distance = dist
+                nearest_point = Position(pathway.position.x, pathway.position.y)
+        
+        return nearest_point, min_distance
     
     def set_agent_count(self, target_count: int):
         """Safely adjust agent count"""
@@ -831,5 +1005,38 @@ class AgentManager:
             'agents_near_fountain': agents_near_fountain,
             'agents_seeking_shade': agents_seeking_shade,
             'agents_sitting': agents_sitting,
+            'total_agents': len(self.agents)
+        }
+    
+    def get_age_distribution_statistics(self) -> dict:
+        """Get current age distribution of spawned agents"""
+        from config import AgentAgeGroup
+        
+        if not self.agents:
+            return {age.value: 0 for age in AgentAgeGroup}
+        
+        age_counts = {age.value: 0 for age in AgentAgeGroup}
+        
+        for agent in self.agents:
+            if agent.age_group:
+                age_counts[agent.age_group] = age_counts.get(agent.age_group, 0) + 1
+        
+        # Convert to percentages
+        total = len(self.agents)
+        age_percentages = {age: (count / total * 100) for age, count in age_counts.items()}
+        
+        return {
+            'counts': age_counts,
+            'percentages': age_percentages,
+            'total_agents': total
+        }
+    
+    def get_path_usage_statistics(self) -> dict:
+        """Get statistics about path vs free-roam agent distribution"""
+        return {
+            'path_only_agents': len([a for a in self.agents if a.constrained_to_path]),
+            'free_roam_agents': len([a for a in self.agents if not a.constrained_to_path]),
+            'path_only_percentage': len([a for a in self.agents if a.constrained_to_path]) / len(self.agents) * 100 if self.agents else 0,
+            'agents_currently_on_path': sum(1 for a in self.agents if self._is_on_path(a.position)),
             'total_agents': len(self.agents)
         }

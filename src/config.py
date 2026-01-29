@@ -22,6 +22,13 @@ class ElementType(Enum):
     PATHWAY = "pathway"
     EMPTY = "empty"
 
+class AgentAgeGroup(Enum):
+    """Age group classifications for agents"""
+    CHILD = "0-17"        # Children and teens
+    YOUNG_ADULT = "18-34" # Young adults
+    ADULT = "35-54"       # Middle-aged adults
+    SENIOR = "55+"        # Seniors
+
 @dataclass
 class ParkConfig:
     """Park environment configuration"""
@@ -151,7 +158,7 @@ class MetricsConfig:
 
 @dataclass
 class AgentConfig:
-    """Pedestrian agent configuration with temperature awareness"""
+    """Pedestrian agent configuration with temperature awareness and age demographics"""
     num_agents: int = 10
     spawn_rate: float = 0.5  # Agents per second
     
@@ -178,6 +185,54 @@ class AgentConfig:
     # Pathfinding
     avoidance_radius: float = 1.5
     goal_reached_threshold: float = 2.0
+    
+    # ========== AGE DEMOGRAPHICS ==========
+    # Default age distribution (can be customized based on location analysis)
+    age_distribution: Dict[str, float] = None  # Will use default if None
+    
+    # Default distribution (balanced park usage)
+    default_age_distribution = {
+        AgentAgeGroup.CHILD.value: 0.25,        # 25% children (0-17)
+        AgentAgeGroup.YOUNG_ADULT.value: 0.30,  # 30% young adults (18-34)
+        AgentAgeGroup.ADULT.value: 0.25,        # 25% adults (35-54)
+        AgentAgeGroup.SENIOR.value: 0.20        # 20% seniors (55+)
+    }
+    
+    # Age-specific behavior modifiers
+    age_speed_multipliers = {
+        AgentAgeGroup.CHILD.value: 1.2,        # Children run faster
+        AgentAgeGroup.YOUNG_ADULT.value: 1.1,  # Young adults walk briskly
+        AgentAgeGroup.ADULT.value: 1.0,        # Baseline speed
+        AgentAgeGroup.SENIOR.value: 0.7        # Seniors walk slower
+    }
+    
+    age_rest_multipliers = {
+        AgentAgeGroup.CHILD.value: 0.8,        # Children rest less
+        AgentAgeGroup.YOUNG_ADULT.value: 0.9,  # Young adults rest less
+        AgentAgeGroup.ADULT.value: 1.0,        # Baseline
+        AgentAgeGroup.SENIOR.value: 1.5        # Seniors rest more
+    }
+    
+    # Agent colors by age group (RGB 0-1)
+    age_group_colors = {
+        AgentAgeGroup.CHILD.value: (1.0, 0.4, 0.6),        # Pink - Children
+        AgentAgeGroup.YOUNG_ADULT.value: (0.3, 0.8, 1.0),  # Cyan - Young Adults
+        AgentAgeGroup.ADULT.value: (0.4, 1.0, 0.4),        # Green - Adults
+        AgentAgeGroup.SENIOR.value: (1.0, 0.8, 0.2)        # Yellow - Seniors
+    }
+    
+    # State-based color modulation (multiplied with age color)
+    state_color_modulation = {
+        'wandering': 1.0,
+        'moving_to_target': 1.1,     # Slightly brighter when moving
+        'resting': 0.7,               # Dimmer when resting
+        'seeking_shade': 0.9,
+        'seeking_coolness': 0.95,
+        'sitting_on_bench': 0.8
+    }
+    
+    # Path constraint settings
+    path_only_ratio: float = 0.6  # 60% of agents stay on paths only
 
 # ============================================
 # VISUALIZATION CONFIGURATION

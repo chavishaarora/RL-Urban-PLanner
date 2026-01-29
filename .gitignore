@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -134,3 +135,11 @@ tensorboard/
 temp/
 tmp/
 scratch/
+=======
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.env
+venv/
+>>>>>>> 0784179911ddf4afccc1f2de185a204ff95c5e49
